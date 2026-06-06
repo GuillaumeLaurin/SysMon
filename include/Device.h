@@ -24,6 +24,12 @@ VOID OnProcessNotify(
     _In_        HANDLE                  ProcessId,
     _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo);
 
+VOID OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+);
+
 #else
 
 /**
@@ -63,5 +69,11 @@ VOID OnProcessNotify(
     _Inout_     PEPROCESS Process,
     _In_        HANDLE ProcessId, 
     _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo);
+
+VOID OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+);
 
 #endif

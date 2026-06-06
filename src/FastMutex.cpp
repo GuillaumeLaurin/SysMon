@@ -13,6 +13,14 @@ VOID FastMutex::Init()
     NT_ASSERT(NT_SUCCESS(status));
 }
 
+VOID FastMutex::Destroy()
+{
+    if (_Mutex != nullptr) {
+        WdfObjectDelete(_Mutex);
+        _Mutex = nullptr;
+    }
+}
+
 VOID FastMutex::Lock()
 {
     WdfWaitLockAcquire(_Mutex, NULL);
@@ -30,6 +38,11 @@ VOID FastMutex::Unlock()
 VOID FastMutex::Init()
 {
     ExInitializeFastMutex(&_Mutex);
+}
+
+VOID FastMutex::Destroy()
+{
+    // FAST_MUTEX does not require explicit destruction
 }
 
 VOID FastMutex::Lock()

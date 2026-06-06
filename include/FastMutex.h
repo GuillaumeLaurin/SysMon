@@ -10,6 +10,8 @@ struct FastMutex
 {
     VOID Init();
 
+    VOID Destroy();
+
     VOID Lock();
 
     VOID Unlock();

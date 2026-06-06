@@ -16,6 +16,11 @@ VOID Globals::Init(_In_ ULONG maxCount)
     _MaxCount = maxCount;
 }
 
+VOID Globals::Destroy()
+{
+    _Lock.Destroy();
+}
+
 VOID Globals::AddItem(_In_ LIST_ENTRY* entry)
 {
     Locker locker(_Lock);

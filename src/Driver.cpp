@@ -78,11 +78,15 @@ EvtDriverUnload(
 
     PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
 
+    PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)
     {
         ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
     }
+
+    g_State.Destroy();
 }
 
 #else // !USE_KMDF
@@ -138,12 +142,15 @@ DriverUnload(
 
     PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
 
+    PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)
     {
         ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
     }
 
+    g_State.Destroy();
     DeviceDelete(DriverObject->DeviceObject);
     LOG_INFO("DriverUnload - done");
 }

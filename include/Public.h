@@ -6,7 +6,9 @@ enum class ItemType : short
 {
     None,
     ProcessCreate,
-    ProcessExit
+    ProcessExit,
+    ThreadCreate,
+    ThreadExit
 };
 
 /**
@@ -47,11 +49,24 @@ struct FullProcessCreateInfo
     ProcessCreateInfo Data;
 };
 
+struct ThreadCreateInfo : ItemHeader
+{
+    ULONG ThreadId;
+    ULONG ProcessId;
+};
+
+struct ThreadExitInfo : ThreadCreateInfo
+{
+    ULONG ExitCode;
+};
+
 struct ItemData : ItemHeader
 {
     union {
-        ProcessCreateInfo ProcessCreate;
-        ProcessExitInfo ProcessExit;
+        ProcessCreateInfo   ProcessCreate;
+        ProcessExitInfo     ProcessExit;
+        ThreadCreateInfo    ThreadCreate;
+        ThreadExitInfo      ThreadExit;
     };
 };
 

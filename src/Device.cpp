@@ -55,6 +55,9 @@ DeviceCreate(
     status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
     NT_CHECK_RETURN(status);
 
+    status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
+    NT_CHECK_RETURN(status);
+
     LOG_INFO("DeviceCreate, device created successfully");
     return STATUS_SUCCESS;
 }
@@ -143,6 +146,43 @@ VOID OnProcessNotify(
     }
 }
 
+VOID 
+OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+)
+{
+    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
+        sizeof(FullItem), DRIVER_TAG);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation\n");
+        return;
+    }
+    
+    auto& item = info->Data.ThreadExit;
+    KeQuerySystemTime(&item.Time);
+    item.Size = Create ? sizeof(ThreadCreateInfo) : sizeof(ThreadExitInfo);
+    item.Type = Create ? ItemType::ThreadCreate : ItemType::ThreadExit;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ThreadId = HandleToULong(ThreadId);
+
+    if (!Create)
+    {
+        PETHREAD thread;
+
+        if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
+        {
+            item.ExitCode = PsGetThreadExitStatus(thread);
+            ObDereferenceObject(thread);
+        }
+    }
+
+    g_State.AddItem(&info->Entry);
+}
+
 #else // !USE_KMDF
 
 /**
@@ -191,6 +231,9 @@ DeviceCreate(
     symLinkCreated = TRUE;
 
     status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
+    NT_CHECK_GOTO(status, Cleanup);
+
+    status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
     NT_CHECK_GOTO(status, Cleanup);
     
     LOG_INFO("DeviceCreated, success (%wZ)", &deviceName);
@@ -271,7 +314,8 @@ DispatchCleanup(
     return CompleteRequest(Irp);
 }
 
-VOID OnProcessNotify(
+VOID 
+OnProcessNotify(
     _Inout_     PEPROCESS Process,
     _In_        HANDLE ProcessId, 
     _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo
@@ -339,6 +383,43 @@ VOID OnProcessNotify(
 
         g_State.AddItem(&info->Entry);
     }
+}
+
+VOID 
+OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+)
+{
+    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
+        sizeof(FullItem), DRIVER_TAG);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation\n");
+        return;
+    }
+    
+    auto& item = info->Data.ThreadExit;
+    KeQuerySystemTime(&item.Time);
+    item.Size = Create ? sizeof(ThreadCreateInfo) : sizeof(ThreadExitInfo);
+    item.Type = Create ? ItemType::ThreadCreate : ItemType::ThreadExit;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ThreadId = HandleToULong(ThreadId);
+
+    if (!Create)
+    {
+        PETHREAD thread;
+
+        if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
+        {
+            item.ExitCode = PsGetThreadExitStatus(thread);
+            ObDereferenceObject(thread);
+        }
+    }
+
+    g_State.AddItem(&info->Entry);
 }
 
 #endif // USE_KMDF

@@ -80,6 +80,22 @@ VOID DisplayInfo(BYTE* buffer, DWORD size)
                     info->ProcessId, commandLine.c_str());
                 break;
             }
+            case ItemType::ThreadCreate:
+            {
+                DisplayTime(header->Time);
+                auto info = (ThreadCreateInfo*)buffer;
+                printf("Thread %u Created in process %u\n",
+                    info->ThreadId, info->ProcessId);
+                break;
+            }
+            case ItemType::ThreadExit:
+            {
+                DisplayTime(header->Time);
+                auto info = (ThreadExitInfo*)buffer;
+                printf("Thread %u Exited from process %u (Code: %u)",
+                    info->ThreadId, info->ProcessId, info->ExitCode);
+                break;
+            }
         }
         buffer += header->Size;
         size -= header->Size;

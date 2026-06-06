@@ -14,5 +14,5 @@ struct Locker
     }
 
 private:
-    Lock _lock;
+    Lock& _lock;
 };

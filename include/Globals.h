@@ -12,6 +12,8 @@ struct Globals
      */
     VOID Init(_In_ ULONG maxCount);
 
+    VOID Destroy();
+
     /**
      * 
      */
