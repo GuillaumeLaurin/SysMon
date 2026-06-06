@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include <unordered_map>
+
 #include "Public.h"
 
 #define SLEEP_CONSTANT 400
@@ -15,6 +17,8 @@ INT Error(_In_ CONST CHAR* msg);
 VOID DisplayInfo(BYTE* buffer, DWORD size);
 
 VOID DisplayTime(CONST LARGE_INTEGER& time);
+
+std::wstring GetDosNameFromNTName(PCWSTR path);
 
 int main()
 {
@@ -96,6 +100,15 @@ VOID DisplayInfo(BYTE* buffer, DWORD size)
                     info->ThreadId, info->ProcessId, info->ExitCode);
                 break;
             }
+            case ItemType::ImageLoad:
+            {
+                DisplayTime(header->Time);
+                auto info = (ImageLoadInfo*)buffer;
+                printf("Image loaded into process %u at address 0x%llX (%ws)\n",
+                    info->ProcessId, info->LoadAddress,
+                GetDosNameFromNTName(info->ImageFileName).c_str());
+                break;
+            }
         }
         buffer += header->Size;
         size -= header->Size;
@@ -111,4 +124,59 @@ VOID DisplayTime(CONST LARGE_INTEGER& time)
     FileTimeToSystemTime(&local, &st);
     printf("%02d:%02d:%02d.%03d: ",
         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+}
+
+std::wstring GetDosNameFromNTName(PCWSTR path)
+{
+    if (path[0] != L'\\')
+    {
+        return path;
+    }
+
+    static std::unordered_map<std::wstring, std::wstring> map;
+
+    if (map.empty())
+    {
+        auto drives = GetLogicalDrives();
+        int c = 0;
+        WCHAR root[] = L"X:";
+        WCHAR target[128];
+
+        while (drives)
+        {
+            if (drives & 1)
+            {
+                root[0] = (WCHAR)(L'A' + c);
+                if (QueryDosDeviceW(root, target, _countof(target)))
+                {
+                    map.insert({target, root});
+                }
+            }
+            drives >>= 1;
+            c++;
+        }
+    }
+
+    auto pos = wcschr(path + 1, L'\\');
+
+    if (pos == nullptr)
+    {
+        return path;
+    }
+
+    pos = wcschr(pos + 1, L'\\');
+
+    if (pos == nullptr)
+    {
+        return path;
+    }
+
+    std::wstring ntname(path, pos - path);
+
+    if (auto it = map.find(ntname); it != map.end())
+    {
+        return it->second + std::wstring(pos);
+    }
+
+    return path;
 }

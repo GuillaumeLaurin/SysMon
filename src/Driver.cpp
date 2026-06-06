@@ -77,8 +77,8 @@ EvtDriverUnload(
     LOG_INFO("EvtDriverUnload - driver unload");
 
     PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
-
     PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+    PsRemoveLoadImageNotifyRoutine(OnImageNotify);
 
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)
@@ -141,8 +141,8 @@ DriverUnload(
     LOG_INFO("DriverUnload - cleaning up...");
 
     PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
-
     PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+    PsRemoveLoadImageNotifyRoutine(OnImageNotify);
 
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)

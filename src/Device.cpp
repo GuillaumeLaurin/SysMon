@@ -58,6 +58,9 @@ DeviceCreate(
     status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
     NT_CHECK_RETURN(status);
 
+    status = PsSetLoadImageNotifyRoutine(OnImageNotify);
+    NT_CHECK_RETURN(status);
+
     LOG_INFO("DeviceCreate, device created successfully");
     return STATUS_SUCCESS;
 }
@@ -183,6 +186,60 @@ OnThreadNotify(
     g_State.AddItem(&info->Entry);
 }
 
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
+)
+{
+    if (ProcessId == nullptr)
+    {
+        // system image, ignore
+        return;
+    }
+
+    auto size = sizeof(FullItem);
+    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
+        size, DRIVER_TAG);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation\n");
+        return;
+    }
+
+    auto& item = info->Data.ImageLoad;
+    KeQuerySystemTime(&item.Time);
+    item.Size = sizeof(item);
+    item.Type = ItemType::ImageLoad;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ImageSize = (ULONG)ImageInfo->ImageSize;
+    item.LoadAddress = (ULONG64)ImageInfo->ImageBase;
+    
+    item.ImageFileName[0] = 0;
+
+    if (ImageInfo->ExtendedInfoPresent)
+    {
+        auto exInfo = CONTAINING_RECORD(ImageInfo, IMAGE_INFO_EX, ImageInfo); 
+        PFLT_FILE_NAME_INFORMATION nameInfo;
+        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(exInfo->FileObject,
+        nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
+        &nameInfo)))
+        {
+            // copy the file path
+            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
+            FltReleaseFileNameInformation(nameInfo);
+        }
+    }
+
+    if (item.ImageFileName[0] == 0 && FullImageName)
+    {
+        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
+    }
+
+    g_State.AddHeadItem(&info->Entry);
+}
+
 #else // !USE_KMDF
 
 /**
@@ -235,6 +292,9 @@ DeviceCreate(
 
     status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
     NT_CHECK_GOTO(status, Cleanup);
+
+    status = PsSetLoadImageNotifyRoutine(OnImageNotify);
+    NT_CHECK_RETURN(status);
     
     LOG_INFO("DeviceCreated, success (%wZ)", &deviceName);
     return STATUS_SUCCESS;
@@ -420,6 +480,60 @@ OnThreadNotify(
     }
 
     g_State.AddItem(&info->Entry);
+}
+
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
+)
+{
+    if (ProcessId == nullptr)
+    {
+        // system image, ignore
+        return;
+    }
+
+    auto size = sizeof(FullItem);
+    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
+        size, DRIVER_TAG);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation\n");
+        return;
+    }
+
+    auto& item = info->Data.ImageLoad;
+    KeQuerySystemTime(&item.Time);
+    item.Size = sizeof(item);
+    item.Type = ItemType::ImageLoad;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ImageSize = (ULONG)ImageInfo->ImageSize;
+    item.LoadAddress = (ULONG64)ImageInfo->ImageBase;
+    
+    item.ImageFileName[0] = 0;
+
+    if (ImageInfo->ExtendedInfoPresent)
+    {
+        auto exInfo = CONTAINING_RECORD(ImageInfo, IMAGE_INFO_EX, ImageInfo); 
+        PFLT_FILE_NAME_INFORMATION nameInfo;
+        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(exInfo->FileObject,
+        nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
+        &nameInfo)))
+        {
+            // copy the file path
+            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
+            FltReleaseFileNameInformation(nameInfo);
+        }
+    }
+
+    if (item.ImageFileName[0] == 0 && FullImageName)
+    {
+        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
+    }
+
+    g_State.AddHeadItem(&info->Entry);
 }
 
 #endif // USE_KMDF

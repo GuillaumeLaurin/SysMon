@@ -53,6 +53,9 @@ else()
     wdk_configure_target(${PROJECT_NAME} WDM)
 endif()
 
+# Filter Manager
+target_link_libraries(${PROJECT_NAME} PRIVATE "${WDK_LIB_KM}/fltMgr.lib")
+
 # Project-specific headers
 target_include_directories(${PROJECT_NAME} PRIVATE include/)
 

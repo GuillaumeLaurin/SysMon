@@ -243,7 +243,7 @@ function(wdk_configure_target TARGET_NAME)
         /WX
         /wd4100
         /wd4201
-        $<$<BOOL:${_ARG_KMDF}>:/wd4324>
+        /wd4324
         $<$<CONFIG:Release>:/O2 /Oi>
         $<$<CONFIG:Debug>:/Od /Zi>
     )

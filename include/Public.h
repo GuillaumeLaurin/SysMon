@@ -8,7 +8,8 @@ enum class ItemType : short
     ProcessCreate,
     ProcessExit,
     ThreadCreate,
-    ThreadExit
+    ThreadExit,
+    ImageLoad
 };
 
 /**
@@ -60,6 +61,14 @@ struct ThreadExitInfo : ThreadCreateInfo
     ULONG ExitCode;
 };
 
+struct ImageLoadInfo : ItemHeader
+{
+    ULONG   ProcessId;
+    ULONG   ImageSize;
+    ULONG64 LoadAddress;
+    WCHAR   ImageFileName[MaxImageFileSize + 1];
+};
+
 struct ItemData : ItemHeader
 {
     union {
@@ -67,6 +76,7 @@ struct ItemData : ItemHeader
         ProcessExitInfo     ProcessExit;
         ThreadCreateInfo    ThreadCreate;
         ThreadExitInfo      ThreadExit;
+        ImageLoadInfo       ImageLoad;
     };
 };
 

@@ -30,6 +30,12 @@ VOID OnThreadNotify(
     _In_ BOOLEAN Create
 );
 
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
+);
+
 #else
 
 /**
@@ -74,6 +80,12 @@ VOID OnThreadNotify(
     _In_ HANDLE  ProcessId,
     _In_ HANDLE  ThreadId,
     _In_ BOOLEAN Create
+);
+
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
 );
 
 #endif
