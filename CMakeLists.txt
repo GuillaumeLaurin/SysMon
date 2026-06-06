@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Template
+project(SysMon
     VERSION 1.0.0
     DESCRIPTION "TO REMOVE IN A REAL PROJECT"
     LANGUAGES C CXX
@@ -12,6 +12,7 @@ project(Template
 option(USE_KMDF    "Use Kernel-Mode Driver Framework (KMDF)"  ON)
 option(USE_WDM     "Use low-level WDM model"                  OFF)
 option(DRIVER_SIGN "Sign the driver after build"              OFF)
+option(BUILD_CLIENT "Build the user-mode client"              ON)
 
 if(USE_KMDF AND USE_WDM)
     message(FATAL_ERROR "USE_KMDF and USE_WDM cannot be used at the same time")
@@ -35,6 +36,8 @@ add_library(${PROJECT_NAME} SHARED
     src/Driver.cpp
     src/Device.cpp
     src/Queue.cpp
+    src/FastMutex.cpp
+    src/Globals.cpp
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -52,6 +55,48 @@ endif()
 
 # Project-specific headers
 target_include_directories(${PROJECT_NAME} PRIVATE include/)
+
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+
+# ------------------------------------------------------------------------------
+# User-mode client target
+# ------------------------------------------------------------------------------
+if (BUILD_CLIENT)
+    set(CLIENT_NAME "${PROJECT_NAME}Client")
+
+    add_executable(${CLIENT_NAME}
+        client/src/Client.cpp
+    )
+
+    target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
+
+    target_compile_options(${CLIENT_NAME} PRIVATE
+        /W4
+        /WX
+        /MP
+        $<$<CONFIG:Debug>:/Od /Zi /RTC1>
+        $<$<CONFIG:Release>:/O2 /GL>
+    )
+
+    target_link_options(${CLIENT_NAME} PRIVATE
+        $<$<CONFIG:Release>:/LTCG>
+    )
+
+    target_link_libraries(${CLIENT_NAME} PRIVATE
+        kernel32
+        user32
+    )
+
+    target_include_directories(${CLIENT_NAME} PRIVATE
+        include/
+        client/include/
+    )
+
+    set_target_properties(${CLIENT_NAME} PROPERTIES
+        OUTPUT_NAME "${CLIENT_NAME}"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+endif()
 
 # ------------------------------------------------------------------------------
 # INF file
@@ -134,5 +179,6 @@ else()
 endif()
 message(STATUS "  WDK       : ${WDK_ROOT} (${WDK_VERSION})")
 message(STATUS "  Signing   : ${DRIVER_SIGN}")
+message(STATUS "  Client    : ${BUILD_CLIENT}")
 message(STATUS "=================================")
 message(STATUS "")

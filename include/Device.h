@@ -10,7 +10,7 @@ EVT_WDF_DEVICE_CONTEXT_CLEANUP EvtDeviceContextCleanup;
 
 /**
  * @brief Creates and configures the WDF device objects
- * 
+ *
  * @param DeviceInit Initialization structure provided by the framework
  * @return NTSTATUS
  */
@@ -18,6 +18,11 @@ NTSTATUS
 DeviceCreate(
     _Inout_ PWDFDEVICE_INIT DeviceInit
 );
+
+VOID OnProcessNotify(
+    _Inout_     PEPROCESS               Process,
+    _In_        HANDLE                  ProcessId,
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo);
 
 #else
 
@@ -44,8 +49,19 @@ DeviceDelete(
     _In_ PDEVICE_OBJECT DeviceObject
 );
 
+NTSTATUS CompleteRequest(
+    _Inout_ PIRP      Irp, 
+    _In_    NTSTATUS  status = STATUS_SUCCESS, 
+    _In_    ULONG_PTR info = 0);
+
 DRIVER_DISPATCH DispatchCreate;
 DRIVER_DISPATCH DispatchClose;
 DRIVER_DISPATCH DispatchCleanup;
+DRIVER_DISPATCH DispatchRead;
+
+VOID OnProcessNotify(
+    _Inout_     PEPROCESS Process,
+    _In_        HANDLE ProcessId, 
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo);
 
 #endif

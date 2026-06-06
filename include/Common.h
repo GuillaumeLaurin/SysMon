@@ -1,5 +1,6 @@
 #pragma once
 
+
 #include <ntddk.h>
 #include <wdm.h>
 
@@ -7,11 +8,17 @@
 #include <wdf.h>
 #endif
 
-#define DRIVER_NAME_A       "Template"
+#include "Globals.h"
 
-#define DRIVER_NAME         L"Template"
-#define DRIVER_DEVICE_NAME  L"\\Device\\Template"
-#define DRIVER_SYMLINK_NAME L"\\DosDevices\\Template"
+extern Globals g_State;
+
+#define DRIVER_TAG 'dcba'
+
+#define DRIVER_NAME_A       "SysMon"
+
+#define DRIVER_NAME         L"SysMon"
+#define DRIVER_DEVICE_NAME  L"\\Device\\sysmon"
+#define DRIVER_SYMLINK_NAME L"\\??\\sysmon"
 
 #ifndef POOL_TAG
 #define POOL_TAG 'VRDM'

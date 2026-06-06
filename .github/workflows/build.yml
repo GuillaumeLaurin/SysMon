@@ -2,7 +2,7 @@ name: Build Driver
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -18,14 +18,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        preset: [ debug, release ]
+        preset: [ debug, release, wdm-debug, wdm-release ]
         wdk:
           - "10.0.22621.0"    # Windows 11 22H2
         include:
           - preset: debug
-            artifact_suffix: dbg
+            artifact_suffix: kmdf-dbg
           - preset: release
-            artifact_suffix: rel
+            artifact_suffix: kmdf-rel
+          - preset: wdm-debug
+            artifact_suffix: wdm-dbg
+          - preset: wdm-release
+            artifact_suffix: wdm-rel
 
     steps:
       # --------------------------------------------------------------------------
@@ -107,6 +111,13 @@ jobs:
           }
           $sys | ForEach-Object { Write-Host "  OK $($_.FullName)" }
 
+          $client = Get-ChildItem -Recurse -Filter "SysMonClient.exe" build/
+          if ($client.Count -eq 0) {
+            Write-Error "SysMonClient.exe not found — build failed"
+            exit 1
+          }
+          $client | ForEach-Object { Write-Host "  OK $($_.FullName)" }
+
       # --------------------------------------------------------------------------
       # 9. Upload artifacts
       # --------------------------------------------------------------------------
@@ -118,6 +129,7 @@ jobs:
             build/${{ matrix.preset }}/**/*.sys
             build/${{ matrix.preset }}/**/*.pdb
             build/${{ matrix.preset }}/**/*.inf
+            build/${{ matrix.preset }}/**/SysMonClient.exe
           retention-days: 30
           if-no-files-found: error
 

@@ -1,8 +1,10 @@
 #include "Common.h"
+#include "Public.h"
 #include "Device.h"
 #include "Queue.h"
+#include "Globals.h"
 
-extern "C" ULONG WdfMinimumVersionRequired = KMDF_VERSION_MINOR;
+#define HARDCODED_LIMIT 10000
 
 #ifdef USE_KMDF
 
@@ -27,6 +29,8 @@ DriverEntry(
     WDF_OBJECT_ATTRIBUTES   attributes;
     
     LOG_INFO("DriverEntry - start (KMDF %d.%d)", KMDF_VERSION_MAJOR, KMDF_VERSION_MINOR);
+
+    g_State.Init(HARDCODED_LIMIT);
 
     WDF_DRIVER_CONFIG_INIT(&config, EvtDriverDeviceAdd);
     config.EvtDriverUnload = EvtDriverUnload;
@@ -71,6 +75,14 @@ EvtDriverUnload(
 {
     UNREFERENCED_PARAMETER(Driver);
     LOG_INFO("EvtDriverUnload - driver unload");
+
+    PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
+
+    PLIST_ENTRY entry;
+    while ((entry = g_State.RemoveItem()) != nullptr)
+    {
+        ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
+    }
 }
 
 #else // !USE_KMDF
@@ -95,6 +107,12 @@ DriverEntry(
 
     LOG_INFO("DriverEntry - start (WDM)");
 
+    status = DeviceCreate(DriverObject, RegistryPath);
+
+    NT_CHECK_RETURN(status);
+
+    g_State.Init(HARDCODED_LIMIT);
+
     DriverObject->DriverUnload = DriverUnload;
 
     DriverObject->MajorFunction[IRP_MJ_CREATE]         = DispatchCreate;
@@ -103,10 +121,6 @@ DriverEntry(
     DriverObject->MajorFunction[IRP_MJ_READ]           = DispatchRead;
     DriverObject->MajorFunction[IRP_MJ_WRITE]          = DispatchWrite;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DispatchDeviceControl;
-
-    status = DeviceCreate(DriverObject, RegistryPath);
-
-    NT_CHECK_RETURN(status);
 
     LOG_INFO("DriverEntry - success");
     return STATUS_SUCCESS;
@@ -121,6 +135,15 @@ DriverUnload(
 )
 {
     LOG_INFO("DriverUnload - cleaning up...");
+
+    PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
+
+    PLIST_ENTRY entry;
+    while ((entry = g_State.RemoveItem()) != nullptr)
+    {
+        ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
+    }
+
     DeviceDelete(DriverObject->DeviceObject);
     LOG_INFO("DriverUnload - done");
 }

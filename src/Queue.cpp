@@ -1,4 +1,6 @@
 #include "Queue.h"
+#include "Public.h"
+#include "Device.h"
 
 #ifdef USE_KMDF
 
@@ -90,7 +92,7 @@ EvtIoDeviceControl(
 }
 
 /**
- * @brief Read callback.
+ * @brief Read callback — drains the event queue into the caller's buffer.
  */
 VOID
 EvtIoRead(
@@ -100,11 +102,47 @@ EvtIoRead(
 )
 {
     UNREFERENCED_PARAMETER(Queue);
-    UNREFERENCED_PARAMETER(Length);
 
     LOG_TRACE("EvtIoRead - %Iu bytes request", Length);
-    /// @todo : fill the read buffer
-    WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, 0);
+
+    PVOID   bufferPtr;
+    size_t  bufferLen;
+    NTSTATUS status = WdfRequestRetrieveOutputBuffer(
+        Request, 1, &bufferPtr, &bufferLen);
+
+    if (!NT_SUCCESS(status))
+    {
+        WdfRequestCompleteWithInformation(Request, status, 0);
+        return;
+    }
+
+    auto   buffer = (PUCHAR)bufferPtr;
+    size_t bytes  = 0;
+
+    while (true)
+    {
+        auto entry = g_State.RemoveItem();
+
+        if (entry == nullptr)
+            break;
+
+        auto info = CONTAINING_RECORD(entry, FullItem, Entry);
+        auto size = info->Data.Size;
+
+        if (bufferLen < size)
+        {
+            g_State.AddHeadItem(entry);
+            break;
+        }
+
+        memcpy(buffer, &info->Data, size);
+        bufferLen -= size;
+        buffer    += size;
+        bytes     += size;
+        ExFreePool(info);
+    }
+
+    WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, bytes);
 }
 
 /**
@@ -190,15 +228,57 @@ DispatchRead(
     _In_    PDEVICE_OBJECT DeviceObject,
     _Inout_ PIRP           Irp
 )
-{   
+{
     UNREFERENCED_PARAMETER(DeviceObject);
 
-    LOG_TRACE("DispatchRead");
-    /// @todo : copy data into the system buffer
-    Irp->IoStatus.Status      = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+     LOG_TRACE("DispatchRead");
+
+    auto irpSp = IoGetCurrentIrpStackLocation(Irp);
+    auto len = irpSp->Parameters.Read.Length;
+    auto status = STATUS_SUCCESS;
+    ULONG bytes = 0;
+    // NT_ASSERT(Irp->MdlAddress);
+
+    auto buffer = (PUCHAR)MmGetSystemAddressForMdlSafe(
+        Irp->MdlAddress, NormalPagePriority
+    );
+
+    if (!buffer) 
+    {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+    }
+    else 
+    {
+        while (true)
+        {
+            auto entry = g_State.RemoveItem();
+
+            if (entry == nullptr)
+            {
+                break;
+            }
+
+            //
+            // Get pointer to the actual data item
+            //
+            auto info = CONTAINING_RECORD(entry, FullItem, Entry);
+            auto size = info->Data.Size;
+
+            if (len < size) 
+            {
+                // user's buffer too small, insert item back
+                g_State.AddHeadItem(entry);
+                break;
+            }
+            memcpy(buffer, &info->Data, size);
+            len -= size;
+            buffer += size;
+            bytes += size;
+            ExFreePool(info);
+        }
+    }
+
+    return CompleteRequest(Irp, status, bytes);
 }
 
 /**
@@ -211,13 +291,9 @@ DispatchWrite(
 )
 {
     UNREFERENCED_PARAMETER(DeviceObject);
-
     LOG_TRACE("DispatchWrite");
     /// @todo : read data from the system buffer
-    Irp->IoStatus.Status      = STATUS_SUCCESS;
-    Irp->IoStatus.Information = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return CompleteRequest(Irp);
 }
 
 #endif // USE_KMDF

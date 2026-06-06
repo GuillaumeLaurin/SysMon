@@ -1,3 +1,5 @@
+#include "Common.h"
+#include "Public.h"
 #include "Device.h"
 #include "Queue.h"
 
@@ -50,6 +52,9 @@ DeviceCreate(
     status = QueueInitialize(device);
     NT_CHECK_RETURN(status);
 
+    status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
+    NT_CHECK_RETURN(status);
+
     LOG_INFO("DeviceCreate, device created successfully");
     return STATUS_SUCCESS;
 }
@@ -68,6 +73,74 @@ EvtDeviceContextCleanup(
     LOG_TRACE("EvtDeviceContextCleanup");
 
     // Release any resources allocated in the device context here !
+}
+
+VOID OnProcessNotify(
+    _Inout_     PEPROCESS               Process,
+    _In_        HANDLE                  ProcessId,
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo
+)
+{
+    if (CreateInfo)
+    {
+        USHORT allocSize = sizeof(FullItem);
+        USHORT commandLineSize = 0;
+
+        if (CreateInfo->CommandLine)
+        {
+            commandLineSize = CreateInfo->CommandLine->Length;
+            allocSize += commandLineSize;
+        }
+
+        auto info = (FullItem*)ExAllocatePool2(
+            POOL_FLAG_PAGED, allocSize, DRIVER_TAG);
+
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation\n");
+            return;
+        }
+
+        auto& item = info->Data.ProcessCreate;
+        KeQuerySystemTime(&item.Time);
+        item.Type               = ItemType::ProcessCreate;
+        item.Size               = sizeof(ProcessCreateInfo) + commandLineSize;
+        item.ProcessId          = HandleToUlong(ProcessId);
+        item.ParentProcessId    = HandleToULong(CreateInfo->CreatingThreadId.UniqueProcess);
+        item.CreatingThreadId   = HandleToULong(CreateInfo->CreatingThreadId.UniqueThread);
+
+        if (commandLineSize > 0)
+        {
+            memcpy(item.CommandLine, CreateInfo->CommandLine->Buffer, commandLineSize);
+            item.CommandLineLength = commandLineSize / sizeof(WCHAR);
+        }
+        else
+        {
+            item.CommandLineLength = 0;
+        }
+
+        g_State.AddItem(&info->Entry);
+    }
+    else
+    {
+        auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
+            sizeof(FullItem), DRIVER_TAG);
+
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation\n");
+            return;
+        }
+
+        auto& item = info->Data.ProcessExit;
+        KeQuerySystemTimePrecise(&item.Time);
+        item.Type       = ItemType::ProcessExit;
+        item.Size       = sizeof(ProcessExitInfo);
+        item.ProcessId  = HandleToULong(ProcessId);
+        item.ExitCode   = PsGetProcessExitStatus(Process);
+
+        g_State.AddItem(&info->Entry);
+    }
 }
 
 #else // !USE_KMDF
@@ -99,27 +172,26 @@ DeviceCreate(
 
     status = IoCreateDevice(
         DriverObject,
-        sizeof(DEVICE_CONTEXT),
+        0,
         &deviceName,
         FILE_DEVICE_UNKNOWN,
-        FILE_DEVICE_SECURE_OPEN,
-        FALSE,
+        0,
+        TRUE,
         &deviceObject
     );
     NT_CHECK_GOTO(status, Cleanup);
 
-    PDEVICE_CONTEXT ctx = (PDEVICE_CONTEXT)deviceObject->DeviceExtension;
-    ctx->IsOpen     = FALSE;
-    ctx->DeviceId   = 0;
-
-    deviceObject->Flags |= DO_BUFFERED_IO;
-    deviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    // DO_DIRECT_IO is better for own memory and cache management
+    deviceObject->Flags |= DO_DIRECT_IO;
 
     RtlInitUnicodeString(&symLink, DRIVER_SYMLINK_NAME);
     status = IoCreateSymbolicLink(&symLink, &deviceName);
     NT_CHECK_GOTO(status, Cleanup);
 
     symLinkCreated = TRUE;
+
+    status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
+    NT_CHECK_GOTO(status, Cleanup);
     
     LOG_INFO("DeviceCreated, success (%wZ)", &deviceName);
     return STATUS_SUCCESS;
@@ -154,6 +226,18 @@ DeviceDelete(
     }
 }
 
+NTSTATUS 
+CompleteRequest(
+    _Inout_ PIRP        Irp, 
+    _In_    NTSTATUS    status, 
+    _In_    ULONG_PTR   info) 
+{
+    Irp->IoStatus.Status = status;
+    Irp->IoStatus.Information = info;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return status;
+}
+
 NTSTATUS
 DispatchCreate(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -162,38 +246,99 @@ DispatchCreate(
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchCreate");
-    Irp->IoStatus.Status        = STATUS_SUCCESS;
-    Irp->IoStatus.Information   = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return CompleteRequest(Irp);
 }
 
 NTSTATUS
 DispatchClose(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP        Irp
+    _In_    PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP           Irp
 )
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchClose");
-    Irp->IoStatus.Status        = STATUS_SUCCESS;
-    Irp->IoStatus.Information   = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return CompleteRequest(Irp);
 }
 
 NTSTATUS
 DispatchCleanup(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP        Irp 
+    _In_    PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP           Irp 
 ) 
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchCleanup");
-    Irp->IoStatus.Status        = STATUS_SUCCESS;
-    Irp->IoStatus.Information   = 0;
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return CompleteRequest(Irp);
+}
+
+VOID OnProcessNotify(
+    _Inout_     PEPROCESS Process,
+    _In_        HANDLE ProcessId, 
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo
+)
+{
+    if (CreateInfo)
+    {
+        USHORT allocSize = sizeof(FullItem);
+        USHORT commandLineSize = 0;
+
+        if (CreateInfo->CommandLine)
+        {
+            commandLineSize = CreateInfo->CommandLine->Length;
+            allocSize += commandLineSize;
+        }
+
+        auto info = (FullItem*)ExAllocatePool2(
+            POOL_FLAG_PAGED, allocSize, DRIVER_TAG);
+        
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation\n");
+            return;
+        }
+
+        auto& item = info->Data.ProcessCreate;
+        KeQuerySystemTime(&item.Time);
+        item.Type = ItemType::ProcessCreate;
+        item.Size = sizeof(ProcessCreateInfo) + commandLineSize;
+        item.ProcessId = HandleToUlong(ProcessId);
+        item.ParentProcessId = HandleToULong(
+            CreateInfo->CreatingThreadId.UniqueProcess);
+        item.CreatingThreadId = HandleToULong(
+            CreateInfo->CreatingThreadId.UniqueThread);
+
+        if (commandLineSize > 0)
+        {
+            memcpy(item.CommandLine, CreateInfo->CommandLine->Buffer, commandLineSize);
+            item.CommandLineLength = commandLineSize / sizeof(WCHAR);
+        }
+        else
+        {
+            item.CommandLineLength = 0;
+        }
+
+        g_State.AddItem(&info->Entry);
+    }
+    else 
+    {
+        auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED, 
+            sizeof(FullItem), DRIVER_TAG);
+        
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation\n");
+            return;
+        }
+
+        auto& item = info->Data.ProcessExit;
+        KeQuerySystemTimePrecise(&item.Time);
+        item.Type = ItemType::ProcessExit;
+        item.Size = sizeof(ProcessExitInfo);
+        item.ProcessId = HandleToULong(ProcessId);
+        item.ExitCode = PsGetProcessExitStatus(Process);
+
+        g_State.AddItem(&info->Entry);
+    }
 }
 
 #endif // USE_KMDF

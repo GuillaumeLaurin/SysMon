@@ -92,9 +92,10 @@ cmake-build-release/
 cmake-build-relwithdebinfo/
 cmake-build-minsizerel/
 
-.vscode/
+.vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json.tpl
+!.vscode/setup_intellisense.ps1
+
 
 Thumbs.db
 Thumbs.db:encryptable

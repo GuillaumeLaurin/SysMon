@@ -210,7 +210,7 @@ function(wdk_configure_target TARGET_NAME)
         POOL_TAG=0x4B445257
         _NO_CRT_STDIO_INLINE
         NO_STDLIB_INIT
-        NTDDI_VERSION=0x0A000007
+        NTDDI_VERSION=0x0A000010
         _WIN32_WINNT=0x0A00
         WINVER=0x0A00
         WIN32_LEAN_AND_MEAN
@@ -219,6 +219,7 @@ function(wdk_configure_target TARGET_NAME)
     )
     if(_ARG_KMDF)
         target_compile_definitions(${TARGET_NAME} PRIVATE
+            USE_KMDF
             KMDF_VERSION_MAJOR=${WDK_KMDF_VERSION_MAJOR}
             KMDF_VERSION_MINOR=${WDK_KMDF_VERSION_MINOR}
         )
@@ -242,6 +243,7 @@ function(wdk_configure_target TARGET_NAME)
         /WX
         /wd4100
         /wd4201
+        $<$<BOOL:${_ARG_KMDF}>:/wd4324>
         $<$<CONFIG:Release>:/O2 /Oi>
         $<$<CONFIG:Debug>:/Od /Zi>
     )

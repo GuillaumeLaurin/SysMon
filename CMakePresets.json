@@ -54,6 +54,17 @@
         "USE_KMDF":         "OFF",
         "USE_WDM":          "ON"
       }
+    },
+    {
+      "name": "wdm-release",
+      "displayName": "WDM Release x64",
+      "description": "Build WDM optimisé pour la distribution",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "USE_KMDF":         "OFF",
+        "USE_WDM":          "ON"
+      }
     }
   ],
 
@@ -81,6 +92,12 @@
       "displayName": "Build WDM Debug",
       "configurePreset": "wdm-debug",
       "configuration": "Debug"
+    },
+    {
+      "name": "wdm-release",
+      "displayName": "Build WDM Release",
+      "configurePreset": "wdm-release",
+      "configuration": "Release"
     }
   ]
 }
