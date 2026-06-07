@@ -2,6 +2,23 @@
 
 #include "Common.h"
 
+VOID OnProcessNotify(
+    _In_        PEPROCESS Process,
+    _In_        HANDLE                  ProcessId,
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo);
+
+VOID OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+);
+
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
+);
+
 #ifdef USE_KMDF
 
 EVT_WDF_DRIVER_DEVICE_ADD EvtDriverDeviceAdd;
@@ -17,23 +34,6 @@ EVT_WDF_DEVICE_CONTEXT_CLEANUP EvtDeviceContextCleanup;
 NTSTATUS
 DeviceCreate(
     _Inout_ PWDFDEVICE_INIT DeviceInit
-);
-
-VOID OnProcessNotify(
-    _Inout_     PEPROCESS               Process,
-    _In_        HANDLE                  ProcessId,
-    _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo);
-
-VOID OnThreadNotify(
-    _In_ HANDLE  ProcessId,
-    _In_ HANDLE  ThreadId,
-    _In_ BOOLEAN Create
-);
-
-VOID OnImageNotify(
-    _In_opt_ PUNICODE_STRING FullImageName,
-    _In_ HANDLE              ProcessId,
-    _In_ PIMAGE_INFO         ImageInfo
 );
 
 #else
@@ -69,23 +69,5 @@ NTSTATUS CompleteRequest(
 DRIVER_DISPATCH DispatchCreate;
 DRIVER_DISPATCH DispatchClose;
 DRIVER_DISPATCH DispatchCleanup;
-DRIVER_DISPATCH DispatchRead;
-
-VOID OnProcessNotify(
-    _Inout_     PEPROCESS Process,
-    _In_        HANDLE ProcessId, 
-    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo);
-
-VOID OnThreadNotify(
-    _In_ HANDLE  ProcessId,
-    _In_ HANDLE  ThreadId,
-    _In_ BOOLEAN Create
-);
-
-VOID OnImageNotify(
-    _In_opt_ PUNICODE_STRING FullImageName,
-    _In_ HANDLE              ProcessId,
-    _In_ PIMAGE_INFO         ImageInfo
-);
 
 #endif

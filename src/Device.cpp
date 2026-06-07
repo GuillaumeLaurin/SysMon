@@ -3,6 +3,166 @@
 #include "Device.h"
 #include "Queue.h"
 
+VOID 
+OnProcessNotify(
+    _In_        PEPROCESS Process,
+    _In_        HANDLE ProcessId, 
+    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo
+)
+{
+    if (CreateInfo)
+    {
+        ULONG  allocSize = sizeof(FullItem<ProcessCreateInfo>);
+        USHORT commandLineSize = 0;
+
+        if (CreateInfo->CommandLine)
+        {
+            commandLineSize = CreateInfo->CommandLine->Length;
+            allocSize += commandLineSize;
+        }
+
+        auto info = (FullItem<ProcessCreateInfo>*)ALLOC_PAGED(allocSize);
+        
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation");
+            return;
+        }
+
+        auto& item = info->Data;
+        KeQuerySystemTime(&item.Time);
+        item.Type = ItemType::ProcessCreate;
+        item.Size = sizeof(ProcessCreateInfo) + commandLineSize;
+        item.ProcessId = HandleToUlong(ProcessId);
+        item.ParentProcessId = HandleToULong(
+            CreateInfo->CreatingThreadId.UniqueProcess);
+        item.CreatingThreadId = HandleToULong(
+            CreateInfo->CreatingThreadId.UniqueThread);
+
+        if (commandLineSize > 0)
+        {
+            memcpy(item.CommandLine, CreateInfo->CommandLine->Buffer, commandLineSize);
+            item.CommandLineLength = commandLineSize / sizeof(WCHAR);
+        }
+        else
+        {
+            item.CommandLineLength = 0;
+        }
+
+        g_State.AddItem(&info->Entry);
+    }
+    else 
+    {
+        auto info = (FullItem<ProcessExitInfo>*)ALLOC_PAGED(sizeof(FullItem<ProcessExitInfo>));
+        
+        if (info == nullptr)
+        {
+            LOG_ERROR("failed allocation");
+            return;
+        }
+
+        auto& item = info->Data;
+        KeQuerySystemTimePrecise(&item.Time);
+        item.Type = ItemType::ProcessExit;
+        item.Size = sizeof(ProcessExitInfo);
+        item.ProcessId = HandleToULong(ProcessId);
+        item.ExitCode = PsGetProcessExitStatus(Process);
+
+        g_State.AddItem(&info->Entry);
+    }
+}
+
+VOID 
+OnThreadNotify(
+    _In_ HANDLE  ProcessId,
+    _In_ HANDLE  ThreadId,
+    _In_ BOOLEAN Create
+)
+{
+    auto size = Create ? sizeof(FullItem<ThreadCreateInfo>) 
+        : sizeof(FullItem<ThreadExitInfo>);
+    auto info = (FullItem<ThreadExitInfo>*)ALLOC_PAGED(size);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation");
+        return;
+    }
+    
+    auto& item = info->Data;
+    KeQuerySystemTime(&item.Time);
+    item.Size = Create ? sizeof(ThreadCreateInfo) : sizeof(ThreadExitInfo);
+    item.Type = Create ? ItemType::ThreadCreate : ItemType::ThreadExit;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ThreadId = HandleToULong(ThreadId);
+
+    if (!Create)
+    {
+        PETHREAD thread;
+
+        if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
+        {
+            item.ExitCode = PsGetThreadExitStatus(thread);
+            ObDereferenceObject(thread);
+        }
+    }
+
+    g_State.AddItem(&info->Entry);
+}
+
+VOID OnImageNotify(
+    _In_opt_ PUNICODE_STRING FullImageName,
+    _In_ HANDLE              ProcessId,
+    _In_ PIMAGE_INFO         ImageInfo
+)
+{
+    if (ProcessId == nullptr)
+    {
+        // system image, ignore
+        return;
+    }
+
+    auto size = sizeof(FullItem<ImageLoadInfo>);
+    auto info = (FullItem<ImageLoadInfo>*)ALLOC_PAGED(size);
+    
+    if (info == nullptr)
+    {
+        LOG_ERROR("failed allocation");
+        return;
+    }
+
+    auto& item = info->Data;
+    KeQuerySystemTime(&item.Time);
+    item.Size = sizeof(item);
+    item.Type = ItemType::ImageLoad;
+    item.ProcessId = HandleToULong(ProcessId);
+    item.ImageSize = (ULONG)ImageInfo->ImageSize;
+    item.LoadAddress = (ULONG64)ImageInfo->ImageBase;
+    
+    item.ImageFileName[0] = 0;
+
+    if (ImageInfo->ExtendedInfoPresent)
+    {
+        auto exInfo = CONTAINING_RECORD(ImageInfo, IMAGE_INFO_EX, ImageInfo); 
+        PFLT_FILE_NAME_INFORMATION nameInfo;
+        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(exInfo->FileObject,
+        nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
+        &nameInfo)))
+        {
+            // copy the file path
+            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
+            FltReleaseFileNameInformation(nameInfo);
+        }
+    }
+
+    if (item.ImageFileName[0] == 0 && FullImageName)
+    {
+        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
+    }
+
+    g_State.AddHeadItem(&info->Entry);
+}
+
 #ifdef USE_KMDF
 
 /**
@@ -79,165 +239,6 @@ EvtDeviceContextCleanup(
     LOG_TRACE("EvtDeviceContextCleanup");
 
     // Release any resources allocated in the device context here !
-}
-
-VOID OnProcessNotify(
-    _Inout_     PEPROCESS               Process,
-    _In_        HANDLE                  ProcessId,
-    _Inout_opt_ PPS_CREATE_NOTIFY_INFO  CreateInfo
-)
-{
-    if (CreateInfo)
-    {
-        USHORT allocSize = sizeof(FullItem);
-        USHORT commandLineSize = 0;
-
-        if (CreateInfo->CommandLine)
-        {
-            commandLineSize = CreateInfo->CommandLine->Length;
-            allocSize += commandLineSize;
-        }
-
-        auto info = (FullItem*)ExAllocatePool2(
-            POOL_FLAG_PAGED, allocSize, DRIVER_TAG);
-
-        if (info == nullptr)
-        {
-            LOG_ERROR("failed allocation\n");
-            return;
-        }
-
-        auto& item = info->Data.ProcessCreate;
-        KeQuerySystemTime(&item.Time);
-        item.Type               = ItemType::ProcessCreate;
-        item.Size               = sizeof(ProcessCreateInfo) + commandLineSize;
-        item.ProcessId          = HandleToUlong(ProcessId);
-        item.ParentProcessId    = HandleToULong(CreateInfo->CreatingThreadId.UniqueProcess);
-        item.CreatingThreadId   = HandleToULong(CreateInfo->CreatingThreadId.UniqueThread);
-
-        if (commandLineSize > 0)
-        {
-            memcpy(item.CommandLine, CreateInfo->CommandLine->Buffer, commandLineSize);
-            item.CommandLineLength = commandLineSize / sizeof(WCHAR);
-        }
-        else
-        {
-            item.CommandLineLength = 0;
-        }
-
-        g_State.AddItem(&info->Entry);
-    }
-    else
-    {
-        auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
-            sizeof(FullItem), DRIVER_TAG);
-
-        if (info == nullptr)
-        {
-            LOG_ERROR("failed allocation\n");
-            return;
-        }
-
-        auto& item = info->Data.ProcessExit;
-        KeQuerySystemTimePrecise(&item.Time);
-        item.Type       = ItemType::ProcessExit;
-        item.Size       = sizeof(ProcessExitInfo);
-        item.ProcessId  = HandleToULong(ProcessId);
-        item.ExitCode   = PsGetProcessExitStatus(Process);
-
-        g_State.AddItem(&info->Entry);
-    }
-}
-
-VOID 
-OnThreadNotify(
-    _In_ HANDLE  ProcessId,
-    _In_ HANDLE  ThreadId,
-    _In_ BOOLEAN Create
-)
-{
-    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
-        sizeof(FullItem), DRIVER_TAG);
-    
-    if (info == nullptr)
-    {
-        LOG_ERROR("failed allocation\n");
-        return;
-    }
-    
-    auto& item = info->Data.ThreadExit;
-    KeQuerySystemTime(&item.Time);
-    item.Size = Create ? sizeof(ThreadCreateInfo) : sizeof(ThreadExitInfo);
-    item.Type = Create ? ItemType::ThreadCreate : ItemType::ThreadExit;
-    item.ProcessId = HandleToULong(ProcessId);
-    item.ThreadId = HandleToULong(ThreadId);
-
-    if (!Create)
-    {
-        PETHREAD thread;
-
-        if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
-        {
-            item.ExitCode = PsGetThreadExitStatus(thread);
-            ObDereferenceObject(thread);
-        }
-    }
-
-    g_State.AddItem(&info->Entry);
-}
-
-VOID OnImageNotify(
-    _In_opt_ PUNICODE_STRING FullImageName,
-    _In_ HANDLE              ProcessId,
-    _In_ PIMAGE_INFO         ImageInfo
-)
-{
-    if (ProcessId == nullptr)
-    {
-        // system image, ignore
-        return;
-    }
-
-    auto size = sizeof(FullItem);
-    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
-        size, DRIVER_TAG);
-    
-    if (info == nullptr)
-    {
-        LOG_ERROR("failed allocation\n");
-        return;
-    }
-
-    auto& item = info->Data.ImageLoad;
-    KeQuerySystemTime(&item.Time);
-    item.Size = sizeof(item);
-    item.Type = ItemType::ImageLoad;
-    item.ProcessId = HandleToULong(ProcessId);
-    item.ImageSize = (ULONG)ImageInfo->ImageSize;
-    item.LoadAddress = (ULONG64)ImageInfo->ImageBase;
-    
-    item.ImageFileName[0] = 0;
-
-    if (ImageInfo->ExtendedInfoPresent)
-    {
-        auto exInfo = CONTAINING_RECORD(ImageInfo, IMAGE_INFO_EX, ImageInfo); 
-        PFLT_FILE_NAME_INFORMATION nameInfo;
-        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(exInfo->FileObject,
-        nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
-        &nameInfo)))
-        {
-            // copy the file path
-            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
-            FltReleaseFileNameInformation(nameInfo);
-        }
-    }
-
-    if (item.ImageFileName[0] == 0 && FullImageName)
-    {
-        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
-    }
-
-    g_State.AddHeadItem(&info->Entry);
 }
 
 #else // !USE_KMDF
@@ -372,168 +373,6 @@ DispatchCleanup(
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchCleanup");
     return CompleteRequest(Irp);
-}
-
-VOID 
-OnProcessNotify(
-    _Inout_     PEPROCESS Process,
-    _In_        HANDLE ProcessId, 
-    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo
-)
-{
-    if (CreateInfo)
-    {
-        USHORT allocSize = sizeof(FullItem);
-        USHORT commandLineSize = 0;
-
-        if (CreateInfo->CommandLine)
-        {
-            commandLineSize = CreateInfo->CommandLine->Length;
-            allocSize += commandLineSize;
-        }
-
-        auto info = (FullItem*)ExAllocatePool2(
-            POOL_FLAG_PAGED, allocSize, DRIVER_TAG);
-        
-        if (info == nullptr)
-        {
-            LOG_ERROR("failed allocation\n");
-            return;
-        }
-
-        auto& item = info->Data.ProcessCreate;
-        KeQuerySystemTime(&item.Time);
-        item.Type = ItemType::ProcessCreate;
-        item.Size = sizeof(ProcessCreateInfo) + commandLineSize;
-        item.ProcessId = HandleToUlong(ProcessId);
-        item.ParentProcessId = HandleToULong(
-            CreateInfo->CreatingThreadId.UniqueProcess);
-        item.CreatingThreadId = HandleToULong(
-            CreateInfo->CreatingThreadId.UniqueThread);
-
-        if (commandLineSize > 0)
-        {
-            memcpy(item.CommandLine, CreateInfo->CommandLine->Buffer, commandLineSize);
-            item.CommandLineLength = commandLineSize / sizeof(WCHAR);
-        }
-        else
-        {
-            item.CommandLineLength = 0;
-        }
-
-        g_State.AddItem(&info->Entry);
-    }
-    else 
-    {
-        auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED, 
-            sizeof(FullItem), DRIVER_TAG);
-        
-        if (info == nullptr)
-        {
-            LOG_ERROR("failed allocation\n");
-            return;
-        }
-
-        auto& item = info->Data.ProcessExit;
-        KeQuerySystemTimePrecise(&item.Time);
-        item.Type = ItemType::ProcessExit;
-        item.Size = sizeof(ProcessExitInfo);
-        item.ProcessId = HandleToULong(ProcessId);
-        item.ExitCode = PsGetProcessExitStatus(Process);
-
-        g_State.AddItem(&info->Entry);
-    }
-}
-
-VOID 
-OnThreadNotify(
-    _In_ HANDLE  ProcessId,
-    _In_ HANDLE  ThreadId,
-    _In_ BOOLEAN Create
-)
-{
-    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
-        sizeof(FullItem), DRIVER_TAG);
-    
-    if (info == nullptr)
-    {
-        LOG_ERROR("failed allocation\n");
-        return;
-    }
-    
-    auto& item = info->Data.ThreadExit;
-    KeQuerySystemTime(&item.Time);
-    item.Size = Create ? sizeof(ThreadCreateInfo) : sizeof(ThreadExitInfo);
-    item.Type = Create ? ItemType::ThreadCreate : ItemType::ThreadExit;
-    item.ProcessId = HandleToULong(ProcessId);
-    item.ThreadId = HandleToULong(ThreadId);
-
-    if (!Create)
-    {
-        PETHREAD thread;
-
-        if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
-        {
-            item.ExitCode = PsGetThreadExitStatus(thread);
-            ObDereferenceObject(thread);
-        }
-    }
-
-    g_State.AddItem(&info->Entry);
-}
-
-VOID OnImageNotify(
-    _In_opt_ PUNICODE_STRING FullImageName,
-    _In_ HANDLE              ProcessId,
-    _In_ PIMAGE_INFO         ImageInfo
-)
-{
-    if (ProcessId == nullptr)
-    {
-        // system image, ignore
-        return;
-    }
-
-    auto size = sizeof(FullItem);
-    auto info = (FullItem*)ExAllocatePool2(POOL_FLAG_PAGED,
-        size, DRIVER_TAG);
-    
-    if (info == nullptr)
-    {
-        LOG_ERROR("failed allocation\n");
-        return;
-    }
-
-    auto& item = info->Data.ImageLoad;
-    KeQuerySystemTime(&item.Time);
-    item.Size = sizeof(item);
-    item.Type = ItemType::ImageLoad;
-    item.ProcessId = HandleToULong(ProcessId);
-    item.ImageSize = (ULONG)ImageInfo->ImageSize;
-    item.LoadAddress = (ULONG64)ImageInfo->ImageBase;
-    
-    item.ImageFileName[0] = 0;
-
-    if (ImageInfo->ExtendedInfoPresent)
-    {
-        auto exInfo = CONTAINING_RECORD(ImageInfo, IMAGE_INFO_EX, ImageInfo); 
-        PFLT_FILE_NAME_INFORMATION nameInfo;
-        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(exInfo->FileObject,
-        nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
-        &nameInfo)))
-        {
-            // copy the file path
-            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
-            FltReleaseFileNameInformation(nameInfo);
-        }
-    }
-
-    if (item.ImageFileName[0] == 0 && FullImageName)
-    {
-        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
-    }
-
-    g_State.AddHeadItem(&info->Entry);
 }
 
 #endif // USE_KMDF

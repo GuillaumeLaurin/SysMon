@@ -1,164 +1,225 @@
-name: Build Driver
+name: Build & Sign SysMon Driver
 
 on:
   push:
-    branches: [ main ]
-    tags:     [ 'v*' ]
+    branches: [main]
+    tags:     ['v*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CERT_SUBJECT: SysMon
+
 jobs:
   build:
-    name: ${{ matrix.preset }} — WDK ${{ matrix.wdk }}
+    name: ${{ matrix.preset }}
     runs-on: windows-2022
 
     strategy:
       fail-fast: false
       matrix:
-        preset: [ debug, release, wdm-debug, wdm-release ]
-        wdk:
-          - "10.0.22621.0"    # Windows 11 22H2
+        preset: [debug, release, wdm-debug, wdm-release]
         include:
           - preset: debug
             artifact_suffix: kmdf-dbg
+            sign: false
           - preset: release
             artifact_suffix: kmdf-rel
+            sign: true
           - preset: wdm-debug
             artifact_suffix: wdm-dbg
+            sign: false
           - preset: wdm-release
             artifact_suffix: wdm-rel
+            sign: true
 
     steps:
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
       # 1. Checkout
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # --------------------------------------------------------------------------
-      # 2. Cache WDK (installation takes ~5 min, cache it)
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
+      # 2. Cache the WDK installer (saves ~5 min per run)
+      # -------------------------------------------------------------------------
       - name: Cache WDK installer
         id: cache-wdk
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}\wdksetup.exe
-          key: wdk-installer-${{ matrix.wdk }}-v1
+          key: wdk-installer-26100-v1
 
-      # --------------------------------------------------------------------------
-      # 3. Install WDK if not cached
-      # --------------------------------------------------------------------------
-      - name: Download WDK installer ${{ matrix.wdk }}
+      - name: Download WDK installer
         if: steps.cache-wdk.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $wdkUrl   = "https://go.microsoft.com/fwlink/?linkid=2196230"
-          $installer = "$env:RUNNER_TEMP\wdksetup.exe"
-          Write-Host "Downloading WDK..."
-          Invoke-WebRequest -Uri $wdkUrl -OutFile $installer -UseBasicParsing
-          Write-Host "Download complete."
-        
-      # --------------------------------------------------------------------------
-      # 4. Install WDK if not cached
-      # --------------------------------------------------------------------------   
-      - name: Install WDK ${{ matrix.wdk }}
+          Invoke-WebRequest `
+            -Uri "https://go.microsoft.com/fwlink/?linkid=2249371" `
+            -OutFile "$env:RUNNER_TEMP\wdksetup.exe" `
+            -UseBasicParsing
+          Write-Host "WDK installer downloaded."
+
+      - name: Install WDK
         shell: pwsh
         run: |
-          $installer = "$env:RUNNER_TEMP\wdksetup.exe"
-          Write-Host "Installing WDK..."
-          Start-Process -FilePath $installer `
+          Start-Process -FilePath "$env:RUNNER_TEMP\wdksetup.exe" `
             -ArgumentList "/quiet", "/norestart" `
             -Wait -NoNewWindow
           Write-Host "WDK installed."
 
-      # --------------------------------------------------------------------------
-      # 5. Set up MSVC environment
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
+      # 3. Setup MSVC environment
+      # -------------------------------------------------------------------------
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
 
-      # --------------------------------------------------------------------------
-      # 6. Configure CMake
-      # --------------------------------------------------------------------------
-      - name: Configure (${{ matrix.preset }})
+      # -------------------------------------------------------------------------
+      # 4. Import signing certificate
+      #    Only for release presets and only when the secret exists.
+      #    PRs from forks have no access to secrets — signing is skipped.
+      # -------------------------------------------------------------------------
+      - name: Import signing certificate
+        if: ${{ matrix.sign }}
+        shell: pwsh
+        env:
+          DRIVER_CERT_PFX_B64: ${{ secrets.DRIVER_CERT_PFX_B64 }}
+          CERT_PASSWORD:        ${{ secrets.CERT_PASSWORD }}
         run: |
-          cmake --preset ${{ matrix.preset }} `
-            -DWDK_VERSION="${{ matrix.wdk }}"
+          if ([string]::IsNullOrEmpty($env:DRIVER_CERT_PFX_B64)) {
+              Write-Host "No certificate secret found — signing will be skipped."
+              exit 0
+          }
 
-      # --------------------------------------------------------------------------
-      # 7. Build
-      # --------------------------------------------------------------------------
+          $pfxPath = Join-Path $env:TEMP "sysmon-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:DRIVER_CERT_PFX_B64))
+
+          $securePass = if ([string]::IsNullOrEmpty($env:CERT_PASSWORD)) {
+              New-Object System.Security.SecureString
+          } else {
+              ConvertTo-SecureString $env:CERT_PASSWORD -AsPlainText -Force
+          }
+
+          Import-PfxCertificate `
+            -FilePath $pfxPath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $securePass | Out-Null
+
+          Remove-Item $pfxPath -Force
+          Write-Host "Certificate imported: CN=$env:CERT_SUBJECT"
+
+      # -------------------------------------------------------------------------
+      # 5a. Configure CMake — debug presets (never sign)
+      # -------------------------------------------------------------------------
+      - name: Configure (${{ matrix.preset }})
+        if: ${{ !matrix.sign }}
+        run: cmake --preset ${{ matrix.preset }} -DDRIVER_SIGN=OFF
+
+      # -------------------------------------------------------------------------
+      # 5b. Configure CMake — release presets (sign only if cert secret exists)
+      # -------------------------------------------------------------------------
+      - name: Configure (${{ matrix.preset }})
+        if: ${{ matrix.sign }}
+        shell: pwsh
+        env:
+          DRIVER_CERT_PFX_B64: ${{ secrets.DRIVER_CERT_PFX_B64 }}
+        run: |
+          $sign = if ([string]::IsNullOrEmpty($env:DRIVER_CERT_PFX_B64)) { "OFF" } else { "ON" }
+          Write-Host "DRIVER_SIGN=$sign"
+          cmake --preset ${{ matrix.preset }} -DDRIVER_SIGN=$sign
+
+      # -------------------------------------------------------------------------
+      # 6. Build
+      # -------------------------------------------------------------------------
       - name: Build (${{ matrix.preset }})
         run: cmake --build --preset ${{ matrix.preset }}
 
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
+      # 7. Export public certificate for distribution
+      # -------------------------------------------------------------------------
+      - name: Export public certificate
+        if: ${{ matrix.sign }}
+        shell: pwsh
+        env:
+          DRIVER_CERT_PFX_B64: ${{ secrets.DRIVER_CERT_PFX_B64 }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:DRIVER_CERT_PFX_B64)) {
+              Write-Host "No certificate secret found — skipping cert export."
+              exit 0
+          }
+
+          $cert = Get-ChildItem Cert:\CurrentUser\My |
+              Where-Object { $_.Subject -eq "CN=$env:CERT_SUBJECT" } |
+              Select-Object -First 1
+
+          if (-not $cert) {
+              Write-Error "Certificate CN=$env:CERT_SUBJECT not found."
+              exit 1
+          }
+
+          $outPath = "build/${{ matrix.preset }}/$env:CERT_SUBJECT.cer"
+          Export-Certificate -Cert $cert -FilePath $outPath | Out-Null
+          Write-Host "Public certificate exported: $outPath"
+
+      # -------------------------------------------------------------------------
       # 8. Verify outputs
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
       - name: Verify outputs
         shell: pwsh
         run: |
-          $sys = Get-ChildItem -Recurse -Filter "*.sys" build/
+          $sys = Get-ChildItem -Recurse "build/${{ matrix.preset }}" -Filter "*.sys"
           if ($sys.Count -eq 0) {
-            Write-Error "No .sys file found — build failed"
-            exit 1
+              Write-Error "No .sys file found — build failed."
+              exit 1
           }
           $sys | ForEach-Object { Write-Host "  OK $($_.FullName)" }
 
-          $client = Get-ChildItem -Recurse -Filter "SysMonClient.exe" build/
-          if ($client.Count -eq 0) {
-            Write-Error "SysMonClient.exe not found — build failed"
-            exit 1
-          }
-          $client | ForEach-Object { Write-Host "  OK $($_.FullName)" }
-
-      # --------------------------------------------------------------------------
-      # 9. Package outputs into a zip per config
-      # --------------------------------------------------------------------------
-      - name: Package release assets
+      # -------------------------------------------------------------------------
+      # 9. Package outputs
+      # -------------------------------------------------------------------------
+      - name: Package (${{ matrix.preset }})
         shell: pwsh
         run: |
-          $suffix = "${{ matrix.artifact_suffix }}"
-          $preset = "${{ matrix.preset }}"
-          $stage  = "staging"
+          $stage = "staging-${{ matrix.artifact_suffix }}"
           New-Item -ItemType Directory -Force $stage | Out-Null
 
-          $filters = @("SysMon.sys", "SysMon.pdb", "SysMon.inf",
-                       "SysMonClient.exe", "SysMonClient.pdb")
+          $files = @("SysMon.sys", "SysMon.pdb", "SysMon.inf",
+                     "SysMon.cer", "SysMonClient.exe", "SysMonClient.pdb")
 
-          foreach ($f in $filters) {
-            $item = Get-ChildItem -Recurse "build/$preset" -Filter $f | Select-Object -First 1
-            if ($item) {
-              Copy-Item $item.FullName "$stage\"
-              Write-Host "  + $($item.Name)"
-            }
+          foreach ($f in $files) {
+              $item = Get-ChildItem -Recurse "build/${{ matrix.preset }}" -Filter $f -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+              if ($item) {
+                  Copy-Item $item.FullName "$stage\"
+                  Write-Host "  + $($item.Name)"
+              }
           }
 
-          $zip = "SysMon-$suffix.zip"
-          Compress-Archive -Path "$stage\*" -DestinationPath $zip
-          Write-Host "Created $zip"
+          Compress-Archive -Path "$stage\*" -DestinationPath "SysMon-${{ matrix.artifact_suffix }}.zip"
+          Write-Host "Package: SysMon-${{ matrix.artifact_suffix }}.zip"
 
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
       # 10. Upload artifact
-      # --------------------------------------------------------------------------
+      # -------------------------------------------------------------------------
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: driver-${{ matrix.artifact_suffix }}-wdk${{ matrix.wdk }}
+          name: SysMon-${{ matrix.artifact_suffix }}
           path: SysMon-${{ matrix.artifact_suffix }}.zip
           retention-days: 30
           if-no-files-found: error
 
-  # ----------------------------------------------------------------------------
-  # Summary job (overall status badge)
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Summary
+  # ---------------------------------------------------------------------------
   summary:
     name: Build Summary
     runs-on: ubuntu-latest
@@ -174,9 +235,9 @@ jobs:
             exit 1
           fi
 
-  # ----------------------------------------------------------------------------
-  # Release job — runs only on version tags (e.g. v1.0.0)
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Release — runs only on version tags (e.g. v1.0.0)
+  # ---------------------------------------------------------------------------
   release:
     name: Publish Release
     runs-on: ubuntu-latest
@@ -185,6 +246,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout (for release notes)
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -193,5 +257,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
-          generate_release_notes: false
+          files: artifacts/**/*.zip
+          generate_release_notes: true
+          body_path: .github/RELEASE_NOTES.md

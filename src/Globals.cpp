@@ -6,13 +6,11 @@
 
 #include "Locker.h"
 
-#define DEFAULT_COUNT 0
-
 VOID Globals::Init(_In_ ULONG maxCount)
 {
     InitializeListHead(&_ItemsHead);
     _Lock.Init();
-    _Count = DEFAULT_COUNT;
+    _Count = 0;
     _MaxCount = maxCount;
 }
 
@@ -28,7 +26,8 @@ VOID Globals::AddItem(_In_ LIST_ENTRY* entry)
     if (_Count == _MaxCount)
     {
         auto head = RemoveHeadList(&_ItemsHead);
-        ExFreePool(CONTAINING_RECORD(head, FullItem, Entry));
+        auto item = CONTAINING_RECORD(head, FullItem<ItemHeader>, Entry);
+        SAFE_FREE(item);
         _Count--;
     }
 

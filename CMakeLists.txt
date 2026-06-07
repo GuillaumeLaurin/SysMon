@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(SysMon
-    VERSION 1.0.0
-    DESCRIPTION "TO REMOVE IN A REAL PROJECT"
+    VERSION 0.5.0
+    DESCRIPTION "Kernel-Mode System Monitoring with a client side"
     LANGUAGES C CXX
 )
 
@@ -119,13 +119,14 @@ if(DRIVER_SIGN)
     )
     if(SIGNTOOL)
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND "${SIGNTOOL}" sign
-                /v
-                /s "PrivateCertStore"
-                /n "${PROJECT_NAME}"
-                /t "http://timestamp.digicert.com"
-                "$<TARGET_FILE:${PROJECT_NAME}>"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DSIGNTOOL_EXE=${SIGNTOOL}"
+                "-DDRIVER_FILE=$<TARGET_FILE:${PROJECT_NAME}>"
+                "-DCERT_SUBJECT=${PROJECT_NAME}"
+                "-DCERT_STORE=My"
+                -P "${CMAKE_SOURCE_DIR}/cmake/SignDriver.cmake"
             COMMENT "Signing driver with SignTool"
+            VERBATIM
         )
     else()
         message(WARNING "signtool.exe not found — signing skipped.")
@@ -133,20 +134,13 @@ if(DRIVER_SIGN)
 endif()
 
 # ------------------------------------------------------------------------------
-# Utility: create self-signed test certificate
+# Utility: create self-signed test certificate (requires PowerShell)
 # ------------------------------------------------------------------------------
-find_program(MAKECERT makecert
-    HINTS "${WDK_ROOT}/bin/${WDK_VERSION}/x64"
+add_custom_target(create_test_cert
+    COMMAND powershell.exe -NoProfile -Command
+        "if (-not (Get-ChildItem Cert:\\CurrentUser\\My | Where-Object { $_.Subject -eq 'CN=${PROJECT_NAME}' })) { New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=${PROJECT_NAME}' -CertStoreLocation 'Cert:\\CurrentUser\\My' -FriendlyName '${PROJECT_NAME} Driver Test Certificate' -NotAfter (Get-Date).AddYears(10) | Out-Null; Write-Host 'Certificate created: CN=${PROJECT_NAME}' } else { Write-Host 'Certificate already exists: CN=${PROJECT_NAME}' }"
+    COMMENT "Creating self-signed test certificate for driver signing"
 )
-if(MAKECERT)
-    add_custom_target(create_test_cert
-        COMMAND "${MAKECERT}"
-            -r -pe -ss PrivateCertStore
-            -n "CN=${PROJECT_NAME}TestCert"
-            ${PROJECT_NAME}_test.cer
-        COMMENT "Creating self-signed test certificate"
-    )
-endif()
 
 # ------------------------------------------------------------------------------
 # Utility: deploy / remove driver via devcon

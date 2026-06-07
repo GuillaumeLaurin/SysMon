@@ -83,7 +83,8 @@ EvtDriverUnload(
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)
     {
-        ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
+        auto item = CONTAINING_RECORD(entry, FullItem<ItemHeader>, Entry);
+        SAFE_FREE(item);
     }
 
     g_State.Destroy();
@@ -111,11 +112,10 @@ DriverEntry(
 
     LOG_INFO("DriverEntry - start (WDM)");
 
-    status = DeviceCreate(DriverObject, RegistryPath);
-
-    NT_CHECK_RETURN(status);
-
     g_State.Init(HARDCODED_LIMIT);
+
+    status = DeviceCreate(DriverObject, RegistryPath);
+    NT_CHECK_RETURN(status);
 
     DriverObject->DriverUnload = DriverUnload;
 
@@ -147,7 +147,8 @@ DriverUnload(
     PLIST_ENTRY entry;
     while ((entry = g_State.RemoveItem()) != nullptr)
     {
-        ExFreePool(CONTAINING_RECORD(entry, FullItem, Entry));
+        auto item = CONTAINING_RECORD(entry, FullItem<ItemHeader>, Entry);
+        SAFE_FREE(item);
     }
 
     g_State.Destroy();

@@ -262,6 +262,7 @@ function(wdk_configure_target TARGET_NAME)
         /MANIFEST:NO
         /ALIGN:4096
         /INCREMENTAL:NO
+        /INTEGRITYCHECK
         $<$<CONFIG:Debug>:/DEBUG>
     )
 

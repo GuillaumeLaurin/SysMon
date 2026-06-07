@@ -28,12 +28,6 @@ struct ProcessExitInfo : ItemHeader
     ULONG ExitCode;
 };
 
-struct FullProcessExitInfo
-{
-    LIST_ENTRY Entry;
-    ProcessExitInfo Data;
-};
-
 struct ProcessCreateInfo : ItemHeader
 {
     ULONG ProcessId;
@@ -42,12 +36,6 @@ struct ProcessCreateInfo : ItemHeader
     ULONG CreatingProcessId;
     USHORT CommandLineLength;
     WCHAR CommandLine[1];
-};
-
-struct FullProcessCreateInfo 
-{
-    LIST_ENTRY Entry;
-    ProcessCreateInfo Data;
 };
 
 struct ThreadCreateInfo : ItemHeader
@@ -69,20 +57,10 @@ struct ImageLoadInfo : ItemHeader
     WCHAR   ImageFileName[MaxImageFileSize + 1];
 };
 
-struct ItemData : ItemHeader
-{
-    union {
-        ProcessCreateInfo   ProcessCreate;
-        ProcessExitInfo     ProcessExit;
-        ThreadCreateInfo    ThreadCreate;
-        ThreadExitInfo      ThreadExit;
-        ImageLoadInfo       ImageLoad;
-    };
-};
-
+template<typename T>
 struct FullItem
 {   
     LIST_ENTRY Entry;
-    ItemData Data;
+    T Data;
 };
 

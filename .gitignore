@@ -34,6 +34,7 @@ CMakeUserPresets.json
 *.pfx
 *.pvk
 *.cat
+*.b64
 
 sdv-map.h
 sdv-user.sdv

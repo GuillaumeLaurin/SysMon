@@ -14,8 +14,6 @@
 
 extern Globals g_State;
 
-#define DRIVER_TAG 'dcba'
-
 #define DRIVER_NAME_A       "SysMon"
 
 #define DRIVER_NAME         L"SysMon"
@@ -76,16 +74,9 @@ extern Globals g_State;
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-typedef struct _DRIVER_CONTEXT {
-    BOOLEAN     Initialized;
-    KSPIN_LOCK  Lock;
-    LIST_ENTRY  DeviceList;
-} DRIVER_CONTEXT, *PDRIVER_CONTEXT;
-
 typedef struct _DEVICE_CONTEXT {
-    ULONG           DeviceId;
-    BOOLEAN         IsOpen;
-    UNICODE_STRING  DeviceName;
+    ULONG   DeviceId;
+    BOOLEAN IsOpen;
 } DEVICE_CONTEXT, *PDEVICE_CONTEXT;
 
 #ifdef USE_KMDF

@@ -53,7 +53,7 @@ if ($KmdfVersion) { $Includes = @("$WdkRoot/Include/wdf/kmdf/$KmdfVersion") + $I
 $Includes = $Includes | ForEach-Object { $_ -replace '\\', '/' }
 
 $Defines = [System.Collections.Generic.List[string]]@(
-    "_KERNEL_MODE","KERNEL_MODE","NTDDI_VERSION=0x0A000010",
+    "_AMD64_", "_KERNEL_MODE","KERNEL_MODE","NTDDI_VERSION=0x0A000010",
     "_WIN32_WINNT=0x0A00","WINVER=0x0A00","WIN32_LEAN_AND_MEAN",
     "POOL_TAG=0x4B445257","_NO_CRT_STDIO_INLINE","NO_STDLIB_INIT","DBG=1","DRIVER_DBG"
 )

@@ -96,7 +96,7 @@ VOID DisplayInfo(BYTE* buffer, DWORD size)
             {
                 DisplayTime(header->Time);
                 auto info = (ThreadExitInfo*)buffer;
-                printf("Thread %u Exited from process %u (Code: %u)",
+                printf("Thread %u Exited from process %u (Code: %u)\n",
                     info->ThreadId, info->ProcessId, info->ExitCode);
                 break;
             }

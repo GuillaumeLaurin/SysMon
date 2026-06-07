@@ -126,7 +126,7 @@ EvtIoRead(
         if (entry == nullptr)
             break;
 
-        auto info = CONTAINING_RECORD(entry, FullItem, Entry);
+        auto info = CONTAINING_RECORD(entry, FullItem<ItemHeader>, Entry);
         auto size = info->Data.Size;
 
         if (bufferLen < size)
@@ -139,7 +139,7 @@ EvtIoRead(
         bufferLen -= size;
         buffer    += size;
         bytes     += size;
-        ExFreePool(info);
+        SAFE_FREE(info);
     }
 
     WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, bytes);
@@ -196,7 +196,7 @@ DispatchDeviceControl(
 
             PULONG pVer = (PULONG)Irp->AssociatedIrp.SystemBuffer;
             *pVer       = 0x00010000; // placeholder
-            bytesOut    = sizeof(PULONG);
+            bytesOut    = sizeof(ULONG);
             break;
         }
         case IOCTL_TEMPLATE_DO_OPERATION:
@@ -237,7 +237,7 @@ DispatchRead(
     auto len = irpSp->Parameters.Read.Length;
     auto status = STATUS_SUCCESS;
     ULONG bytes = 0;
-    // NT_ASSERT(Irp->MdlAddress);
+    NT_ASSERT(Irp->MdlAddress);
 
     auto buffer = (PUCHAR)MmGetSystemAddressForMdlSafe(
         Irp->MdlAddress, NormalPagePriority
@@ -261,10 +261,10 @@ DispatchRead(
             //
             // Get pointer to the actual data item
             //
-            auto info = CONTAINING_RECORD(entry, FullItem, Entry);
+            auto info = CONTAINING_RECORD(entry, FullItem<ItemHeader>, Entry);
             auto size = info->Data.Size;
 
-            if (len < size) 
+            if (len < size)
             {
                 // user's buffer too small, insert item back
                 g_State.AddHeadItem(entry);
@@ -274,7 +274,7 @@ DispatchRead(
             len -= size;
             buffer += size;
             bytes += size;
-            ExFreePool(info);
+            SAFE_FREE(info);
         }
     }
 
