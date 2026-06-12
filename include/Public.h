@@ -9,7 +9,8 @@ enum class ItemType : short
     ProcessExit,
     ThreadCreate,
     ThreadExit,
-    ImageLoad
+    ImageLoad,
+    RemoteThread
 };
 
 /**
@@ -17,8 +18,8 @@ enum class ItemType : short
  */
 struct ItemHeader
 {
-    ItemType Type;
-    USHORT Size;
+    ItemType      Type;
+    USHORT        Size;
     LARGE_INTEGER Time;
 };
 
@@ -30,12 +31,12 @@ struct ProcessExitInfo : ItemHeader
 
 struct ProcessCreateInfo : ItemHeader
 {
-    ULONG ProcessId;
-    ULONG ParentProcessId;
-    ULONG CreatingThreadId;
-    ULONG CreatingProcessId;
+    ULONG  ProcessId;
+    ULONG  ParentProcessId;
+    ULONG  CreatingThreadId;
+    ULONG  CreatingProcessId;
     USHORT CommandLineLength;
-    WCHAR CommandLine[1];
+    WCHAR  CommandLine[1];
 };
 
 struct ThreadCreateInfo : ItemHeader
@@ -57,10 +58,25 @@ struct ImageLoadInfo : ItemHeader
     WCHAR   ImageFileName[MaxImageFileSize + 1];
 };
 
+struct RemoteThread : ItemHeader
+{
+    ULONG         CreatorProcessId;
+    ULONG         CreatorThreadId;
+    ULONG         ProcessId;
+    ULONG         ThreadId;
+};
+
+struct Process
+{
+    ULONG ProcessId;
+};
+
 template<typename T>
 struct FullItem
 {   
     LIST_ENTRY Entry;
-    T Data;
+    T          Data;
 };
+
+using ProcessItem = FullItem<Process>;
 

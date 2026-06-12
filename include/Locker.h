@@ -16,3 +16,20 @@ struct Locker
 private:
     Lock& _lock;
 };
+
+template <typename Lock>
+struct SharedLocker
+{
+    inline explicit SharedLocker(Lock& lock) : _Lock(lock)
+    {
+        lock.LockShared();
+    }
+
+    inline ~SharedLocker()
+    {
+        _Lock.UnlockShared();
+    }
+
+private:
+    Lock& _Lock;
+};

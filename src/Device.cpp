@@ -12,6 +12,29 @@ OnProcessNotify(
 {
     if (CreateInfo)
     {
+        do
+        {
+            auto process = (ProcessItem*)ALLOC_PAGED(sizeof(ProcessItem));
+
+            if (process == nullptr)
+            {
+                LOG_ERROR("failed allocation\n");
+                break;
+            }
+
+            process->Data.ProcessId = HandleToUlong(ProcessId);
+
+            if (!g_State.AddNewProcess(&process->Entry))
+            {
+                LOG_WARN("New process created, no room to store\n");
+                // we need to delete reference to memory 
+                SAFE_FREE(process);
+            } else 
+            {   
+                LOG_INFO("New process added: %u\n", process->Data.ProcessId);
+            }
+        } while (0);
+        
         ULONG  allocSize = sizeof(FullItem<ProcessCreateInfo>);
         USHORT commandLineSize = 0;
 
@@ -25,7 +48,7 @@ OnProcessNotify(
         
         if (info == nullptr)
         {
-            LOG_ERROR("failed allocation");
+            LOG_ERROR("failed allocation\n");
             return;
         }
 
@@ -57,7 +80,7 @@ OnProcessNotify(
         
         if (info == nullptr)
         {
-            LOG_ERROR("failed allocation");
+            LOG_ERROR("failed allocation\n");
             return;
         }
 
@@ -79,13 +102,59 @@ OnThreadNotify(
     _In_ BOOLEAN Create
 )
 {
+    do 
+    {
+        if (Create)
+        {
+            bool remote = PsGetCurrentProcessId() != ProcessId
+                && PsInitialSystemProcess != PsGetCurrentProcess()
+                && PsGetProcessId(PsInitialSystemProcess) != ProcessId;
+        
+            if (remote)
+            {
+                if (g_State.RemoveProcess(ProcessId))
+                {
+                    // ignore
+                }
+                else
+                {
+                    // Remote thread
+                    auto size = sizeof(FullItem<RemoteThread>);
+                    auto info = (FullItem<RemoteThread>*)ALLOC_PAGED(size);
+
+                    if (info == nullptr)
+                    {
+                        LOG_ERROR("failed allocation\n");
+                        break;
+                    }
+
+                    auto& item = info->Data;
+                    KeQuerySystemTime(&item.Time);
+                    item.Size = sizeof(RemoteThread);
+                    item.Type = ItemType::RemoteThread;
+                    item.CreatorProcessId = HandleToULong(PsGetCurrentProcessId());
+                    item.CreatorThreadId = HandleToULong(PsGetCurrentThreadId());
+                    item.ProcessId = HandleToULong(ProcessId);
+                    item.ThreadId = HandleToULong(ThreadId);
+
+                    LOG_INFO("Remote thread detected. (PID: %u, TID: %u) -> (PID: %u, TID: %u)\n",
+                        item.CreatorProcessId, item.CreatorThreadId,
+                        item.ProcessId, item.ThreadId);
+                    
+                    g_State.AddItem(&info->Entry);
+                }
+            }
+        }
+    } while (0);
+    
+
     auto size = Create ? sizeof(FullItem<ThreadCreateInfo>) 
         : sizeof(FullItem<ThreadExitInfo>);
     auto info = (FullItem<ThreadExitInfo>*)ALLOC_PAGED(size);
     
     if (info == nullptr)
     {
-        LOG_ERROR("failed allocation");
+        LOG_ERROR("failed allocation\n");
         return;
     }
     
@@ -127,7 +196,7 @@ VOID OnImageNotify(
     
     if (info == nullptr)
     {
-        LOG_ERROR("failed allocation");
+        LOG_ERROR("failed allocation\n");
         return;
     }
 

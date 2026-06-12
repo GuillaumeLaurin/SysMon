@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(SysMon
-    VERSION 0.5.0
+    VERSION 0.7.0
     DESCRIPTION "Kernel-Mode System Monitoring with a client side"
     LANGUAGES C CXX
 )
@@ -38,6 +38,7 @@ add_library(${PROJECT_NAME} SHARED
     src/Queue.cpp
     src/FastMutex.cpp
     src/Globals.cpp
+    src/ExecutiveResource.cpp
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

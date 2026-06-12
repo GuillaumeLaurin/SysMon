@@ -5,6 +5,7 @@
 #include "Globals.h"
 
 #define HARDCODED_LIMIT 10000
+#define MAX_NEW_PROCESS 300
 
 #ifdef USE_KMDF
 
@@ -30,7 +31,7 @@ DriverEntry(
     
     LOG_INFO("DriverEntry - start (KMDF %d.%d)", KMDF_VERSION_MAJOR, KMDF_VERSION_MINOR);
 
-    g_State.Init(HARDCODED_LIMIT);
+    g_State.Init(HARDCODED_LIMIT, MAX_NEW_PROCESS);
 
     WDF_DRIVER_CONFIG_INIT(&config, EvtDriverDeviceAdd);
     config.EvtDriverUnload = EvtDriverUnload;
@@ -87,6 +88,8 @@ EvtDriverUnload(
         SAFE_FREE(item);
     }
 
+    g_State.ClearNewProcesses();
+
     g_State.Destroy();
 }
 
@@ -112,7 +115,7 @@ DriverEntry(
 
     LOG_INFO("DriverEntry - start (WDM)");
 
-    g_State.Init(HARDCODED_LIMIT);
+    g_State.Init(HARDCODED_LIMIT, MAX_NEW_PROCESS);
 
     status = DeviceCreate(DriverObject, RegistryPath);
     NT_CHECK_RETURN(status);
@@ -150,6 +153,8 @@ DriverUnload(
         auto item = CONTAINING_RECORD(entry, FullItem<ItemHeader>, Entry);
         SAFE_FREE(item);
     }
+    
+    g_State.ClearNewProcesses();
 
     g_State.Destroy();
     DeviceDelete(DriverObject->DeviceObject);

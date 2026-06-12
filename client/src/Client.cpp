@@ -109,6 +109,14 @@ VOID DisplayInfo(BYTE* buffer, DWORD size)
                 GetDosNameFromNTName(info->ImageFileName).c_str());
                 break;
             }
+            case ItemType::RemoteThread:
+            {
+                DisplayTime(header->Time);
+                auto info = (RemoteThread*)buffer;
+                printf("Remote Thread from PID: %u TID: %u -> PID: %u TID: %u\n",
+                    info->CreatorProcessId, info->CreatorThreadId, info->ProcessId, info->ThreadId);
+                break;
+            }
         }
         buffer += header->Size;
         size -= header->Size;
