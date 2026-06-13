@@ -66,40 +66,7 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 # User-mode client target
 # ------------------------------------------------------------------------------
 if (BUILD_CLIENT)
-    set(CLIENT_NAME "${PROJECT_NAME}Client")
-
-    add_executable(${CLIENT_NAME}
-        client/src/Client.cpp
-    )
-
-    target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
-
-    target_compile_options(${CLIENT_NAME} PRIVATE
-        /W4
-        /WX
-        /MP
-        $<$<CONFIG:Debug>:/Od /Zi /RTC1>
-        $<$<CONFIG:Release>:/O2 /GL>
-    )
-
-    target_link_options(${CLIENT_NAME} PRIVATE
-        $<$<CONFIG:Release>:/LTCG>
-    )
-
-    target_link_libraries(${CLIENT_NAME} PRIVATE
-        kernel32
-        user32
-    )
-
-    target_include_directories(${CLIENT_NAME} PRIVATE
-        include/
-        client/include/
-    )
-
-    set_target_properties(${CLIENT_NAME} PROPERTIES
-        OUTPUT_NAME "${CLIENT_NAME}"
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
+    add_subdirectory(client)
 endif()
 
 # ------------------------------------------------------------------------------

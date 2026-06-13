@@ -1,0 +1,9 @@
+[submodule "vendor/imgui"]
+	path = vendor/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "vendor/spdlog"]
+	path = vendor/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "vendor/nlohmann-json"]
+	path = vendor/nlohmann-json
+	url = https://github.com/nlohmann/json
