@@ -2,14 +2,24 @@
 
 #include "reporter/ErrorDispatcher.hpp"
 
+#include "reporter/DumpProvider.hpp"
+
 #include "reporter/ConsoleSink.hpp"
 
 #include "reporter/JsonFormatter.hpp"
 
 #include <typeinfo>
 
-ExceptionHandler::ExceptionHandler(std::shared_ptr<IErrorDispatcher> dispatcher)
-    : _ErrorDispatcher(dispatcher != nullptr ? dispatcher : std::make_shared<ErrorDispatcher>())
+#include <filesystem>
+
+ExceptionHandler::ExceptionHandler(
+    std::shared_ptr<IErrorDispatcher> dispatcher,
+    std::shared_ptr<IDumpProvider> dumpProvider
+)
+    : _ErrorDispatcher(dispatcher != nullptr ? dispatcher : std::make_shared<ErrorDispatcher>()),
+      _DumpProvider(dumpProvider != nullptr ? dumpProvider : std::make_shared<DumpProvider>()),
+      _OutputPath((std::filesystem::current_path() / "dumps").wstring()),
+      _DumpType(DumpType::Full)
 {
     if (dispatcher == nullptr)
     {
@@ -23,7 +33,15 @@ ExceptionHandler::ExceptionHandler(std::shared_ptr<IErrorDispatcher> dispatcher)
 
 void ExceptionHandler::Handle(const SysMonException& exception) noexcept
 {
-    _ErrorDispatcher->Dispatch(exception.ToRecord());
+    auto record  = exception.ToRecord();
+    bool isFatal = record.Severity == ErrorSeverity::Fatal;
+
+    _ErrorDispatcher->Dispatch(record);
+
+    if (isFatal)
+    {
+        _DumpProvider->GenerateDump(record, _OutputPath, _DumpType);
+    }
 }
 
 void ExceptionHandler::HandleUnknown(std::exception_ptr ptr) noexcept
@@ -40,14 +58,29 @@ void ExceptionHandler::HandleUnknown(std::exception_ptr ptr) noexcept
     {
         Handle(exception);
     }
+
     catch(const std::exception& e)
     {
-        _ErrorDispatcher->Dispatch(BuildMinimalRecord("MinimumException", e.what(), typeid(e).name()));
+        auto record = BuildMinimalRecord("MinimumException", e.what(), typeid(e).name());
+        _ErrorDispatcher->Dispatch(record);
+        _DumpProvider->GenerateDump(record, _OutputPath, _DumpType);
     }
     catch(...)
     {
-        _ErrorDispatcher->Dispatch(BuildMinimalRecord("UnknownException", "", ""));
+        auto record = BuildMinimalRecord("UnknownException", "", "");
+        _ErrorDispatcher->Dispatch(record);
+        _DumpProvider->GenerateDump(record, _OutputPath, _DumpType);
     }
+}
+
+void ExceptionHandler::SetOutputPath(const std::wstring& outputPath) noexcept
+{
+    _OutputPath = outputPath;
+}
+
+void ExceptionHandler::SetDumpType(DumpType dumpType) noexcept
+{
+    _DumpType = dumpType;
 }
 
 std::shared_ptr<IErrorDispatcher> ExceptionHandler::Dispatcher() const noexcept
