@@ -18,7 +18,7 @@ class ErrorDispatcher : public IErrorDispatcher
     using SinkMap = std::unordered_map<std::string, std::shared_ptr<IErrorSink>>;
     using FilterArray = std::vector<std::shared_ptr<IErrorFilter>>;
 public:
-    ErrorDispatcher(std::shared_ptr<IErrorQueue> queue = nullptr); 
+    ErrorDispatcher(std::shared_ptr<IErrorQueue> queue); 
 
     ~ErrorDispatcher() override;
 

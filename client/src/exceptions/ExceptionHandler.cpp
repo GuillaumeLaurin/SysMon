@@ -16,8 +16,8 @@ ExceptionHandler::ExceptionHandler(
     std::shared_ptr<IErrorDispatcher> dispatcher,
     std::shared_ptr<IDumpProvider> dumpProvider
 )
-    : _ErrorDispatcher(dispatcher != nullptr ? dispatcher : std::make_shared<ErrorDispatcher>()),
-      _DumpProvider(dumpProvider != nullptr ? dumpProvider : std::make_shared<DumpProvider>()),
+    : _ErrorDispatcher(dispatcher),
+      _DumpProvider(dumpProvider),
       _OutputPath((std::filesystem::current_path() / "dumps").wstring()),
       _DumpType(DumpType::Full)
 {

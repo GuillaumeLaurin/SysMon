@@ -12,8 +12,8 @@ class ExceptionHandler : public IExceptionHandler
 {
 public:
     ExceptionHandler(
-        std::shared_ptr<IErrorDispatcher> dispatcher = nullptr,
-        std::shared_ptr<IDumpProvider> dumpProvider = nullptr
+        std::shared_ptr<IErrorDispatcher> dispatcher,
+        std::shared_ptr<IDumpProvider> dumpProvider
     );
 
     ~ExceptionHandler() override = default;

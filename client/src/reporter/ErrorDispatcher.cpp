@@ -5,7 +5,7 @@
 #include <algorithm>
 
 ErrorDispatcher::ErrorDispatcher(std::shared_ptr<IErrorQueue> queue)
-    : _Queue(queue != nullptr ? std::move(queue) : std::make_shared<ErrorQueue>()),
+    : _Queue(queue),
       _Running(true),
       _Worker(std::thread(&ErrorDispatcher::WorkerLoop, this))
 {

@@ -23,6 +23,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/nlohmann-json/ vendor/nlohmann-json)
 
 add_executable(${CLIENT_NAME}
     src/Client.cpp
+    # --- Core ---
+    src/core/DIContainer.cpp
     # --- Reporter ---
     src/reporter/ErrorQueue.cpp
     src/reporter/ErrorRecord.cpp
@@ -37,6 +39,8 @@ add_executable(${CLIENT_NAME}
     # --- Exceptions ---
     src/exceptions/SysMonException.cpp
     src/exceptions/ExceptionHandler.cpp
+    # --- Logging --
+    src/logging/Logger.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
