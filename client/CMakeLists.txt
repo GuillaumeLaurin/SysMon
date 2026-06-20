@@ -23,6 +23,16 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/nlohmann-json/ vendor/nlohmann-json)
 
 add_executable(${CLIENT_NAME}
     src/Client.cpp
+    src/reporter/ErrorQueue.cpp
+    src/reporter/ErrorRecord.cpp
+    src/reporter/JsonFormatter.cpp
+    src/reporter/ConsoleSink.cpp
+    src/reporter/FileSink.cpp
+    src/reporter/ErrorDispatcher.cpp
+    src/reporter/SeverityFilter.cpp
+    src/reporter/CategoryFilter.cpp
+    src/reporter/RateLimitFilter.cpp
+    src/reporter/DumpProvider.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
@@ -31,6 +41,7 @@ target_compile_options(${CLIENT_NAME} PRIVATE
     /W4
     /WX
     /MP
+    /EHsc
     $<$<CONFIG:Debug>:/Od /Zi /RTC1>
     $<$<CONFIG:Release>:/O2 /GL>
 )
@@ -49,6 +60,7 @@ target_link_libraries(${CLIENT_NAME} PRIVATE
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     imgui
+    dbghelp
 )
 
 target_include_directories(${CLIENT_NAME} PRIVATE
@@ -66,3 +78,5 @@ set_target_properties(${CLIENT_NAME} PROPERTIES
     OUTPUT_NAME "${CLIENT_NAME}"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+
+target_compile_definitions(${CLIENT_NAME} PRIVATE WIN32_LEAN_AND_MEAN)
