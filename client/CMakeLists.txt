@@ -39,8 +39,12 @@ add_executable(${CLIENT_NAME}
     # --- Exceptions ---
     src/exceptions/SysMonException.cpp
     src/exceptions/ExceptionHandler.cpp
-    # --- Logging --
+    # --- Logging ---
     src/logging/Logger.cpp
+    # --- Storage ---
+    src/storage/Database.cpp
+    src/storage/EventRepository.cpp
+    src/storage/ConfigRepository.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
