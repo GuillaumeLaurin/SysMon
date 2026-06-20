@@ -45,6 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
 
       # -------------------------------------------------------------------------
       # 2. Cache the WDK installer (saves ~5 min per run)

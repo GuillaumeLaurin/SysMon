@@ -23,6 +23,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/nlohmann-json/ vendor/nlohmann-json)
 
 add_executable(${CLIENT_NAME}
     src/Client.cpp
+    # --- Reporter ---
     src/reporter/ErrorQueue.cpp
     src/reporter/ErrorRecord.cpp
     src/reporter/JsonFormatter.cpp
@@ -33,6 +34,9 @@ add_executable(${CLIENT_NAME}
     src/reporter/CategoryFilter.cpp
     src/reporter/RateLimitFilter.cpp
     src/reporter/DumpProvider.cpp
+    # --- Exceptions ---
+    src/exceptions/SysMonException.cpp
+    src/exceptions/ExceptionHandler.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
@@ -61,6 +65,7 @@ target_link_libraries(${CLIENT_NAME} PRIVATE
     nlohmann_json::nlohmann_json
     imgui
     dbghelp
+    psapi
 )
 
 target_include_directories(${CLIENT_NAME} PRIVATE
