@@ -25,6 +25,8 @@ add_executable(${CLIENT_NAME}
     src/Client.cpp
     # --- Core ---
     src/core/DIContainer.cpp
+    src/core/DriverConnector.cpp
+    src/core/EventProcessor.cpp
     # --- Reporter ---
     src/reporter/ErrorQueue.cpp
     src/reporter/ErrorRecord.cpp
@@ -74,6 +76,7 @@ target_link_libraries(${CLIENT_NAME} PRIVATE
     imgui
     dbghelp
     psapi
+    ole32
 )
 
 target_include_directories(${CLIENT_NAME} PRIVATE
