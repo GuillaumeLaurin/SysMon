@@ -47,6 +47,8 @@ add_executable(${CLIENT_NAME}
     src/storage/Database.cpp
     src/storage/EventRepository.cpp
     src/storage/ConfigRepository.cpp
+    # --- Application ---
+    src/app/Application.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)

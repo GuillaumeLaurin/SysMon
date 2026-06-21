@@ -8,6 +8,7 @@
 
 class EventRepository : public IEventRepository
 {
+public:
     EventRepository(std::shared_ptr<IDatabase> connexion);
 
     ~EventRepository() override = default;
