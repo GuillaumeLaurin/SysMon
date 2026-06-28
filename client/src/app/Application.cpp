@@ -28,8 +28,11 @@
 
 #include "exceptions/SysMonException.hpp"
 
-Application::Application()
-    : _Running(false), _Error(0)
+#include "gui/DX11Renderer.hpp"
+#include "gui/UIRenderer.hpp"
+
+Application::Application(HINSTANCE hInstance, int nCmdShow)
+    : _Running(false), _Error(0), _HInstance(hInstance), _NCmdShow(nCmdShow)
 {
 }
 
@@ -46,6 +49,8 @@ void Application::Shutdown() noexcept
 {
     _Running = false;
     _Container.Resolve<EventProcessor>()->Stop();
+    _Container.Resolve<UIRenderer>()->Shutdown();
+    _Window->Shutdown();
     _Container.Resolve<ErrorDispatcher>()->Shutdown();
 }
 
@@ -78,6 +83,11 @@ void Application::Init()
         _Container.Resolve<EventRepository>(), 
         _Container.Resolve<ErrorDispatcher>())
     );
+    // gui
+    _Container.Register(std::make_shared<DX11Renderer>());
+    _Container.Register(std::make_shared<UIRenderer>(
+        _Container.Resolve<DX11Renderer>()
+    ));
     // intialize dispatcher
     auto dispatcher = _Container.Resolve<ErrorDispatcher>();
     dispatcher->AddSink(_Container.Resolve<FileSink>());
@@ -89,6 +99,13 @@ void Application::Init()
     db->Open((std::filesystem::current_path() / "sysmon.db").string());
     auto driverConnector  = _Container.Resolve<DriverConnector>();
     driverConnector->Connect(L"\\\\.\\SysMon");
+    // window
+    _Window = std::make_unique<Win32Window>();
+    _Window->Initialize(_HInstance, _NCmdShow);
+    _Window->SetResizeCallback([this](UINT w, UINT h) {
+        _Container.Resolve<DX11Renderer>()->SetResizeSize(w, h);
+    });
+    _Container.Resolve<UIRenderer>()->Initialize(_Window->GetHWND());
 }
 
 void Application::LogicLoop()
@@ -97,7 +114,15 @@ void Application::LogicLoop()
     {
         try
         {
-            Sleep(100);
+            _Window->ProcessMessages();
+
+            if (!_Window->IsRunning())
+            {
+                Shutdown();
+                break;
+            }
+
+            _Container.Resolve<UIRenderer>()->Render();
         }
         catch(const SysMonException& e)
         {

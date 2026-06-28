@@ -49,6 +49,10 @@ add_executable(${CLIENT_NAME}
     src/storage/ConfigRepository.cpp
     # --- Application ---
     src/app/Application.cpp
+    # --- Gui ---
+    src/gui/DX11Renderer.cpp
+    src/gui/UIRenderer.cpp
+    src/gui/Win32Window.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)

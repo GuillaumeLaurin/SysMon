@@ -14,9 +14,9 @@ BOOL WINAPI CtrlHandler(DWORD signal)
     return FALSE;
 }
 
-int main()
+int WINAPI main(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-    Application app;
+    Application app(hInstance, nCmdShow);
     _App = &app;
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
     return app.Run();
