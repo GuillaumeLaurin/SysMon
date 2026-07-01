@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef _PAGE_NAME
+#define _PAGE_NAME inline static const char* Name =
+#endif // !_PAGE_NAME
+
 class IPage
 {
 public:

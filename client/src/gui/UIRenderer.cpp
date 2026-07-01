@@ -1,7 +1,7 @@
 #include "gui/UIRenderer.hpp"
 
-UIRenderer::UIRenderer(std::shared_ptr<IRenderer> renderer)
-    : _Renderer(renderer)
+UIRenderer::UIRenderer(std::shared_ptr<IRenderer> renderer, std::shared_ptr<IRouter> router)
+    : _Renderer(renderer), _Router(router)
 {
 }
 
@@ -14,25 +14,15 @@ void UIRenderer::Render()
 {
     _Renderer->BeginFrame();
 
-    for (auto& page : _Pages)
-    {
-        page->Update();
-        page->Render();
-    }
+    _Router->CurrentPage()->Update();
+    _Router->CurrentPage()->Render();
 
     _Renderer->EndFrame();
 }
 
 void UIRenderer::Shutdown()
 {
-    for (auto& page : _Pages)
-        page->OnExit();
+    _Router->CurrentPage()->OnExit();
     
     _Renderer->Shutdown();
-}
-
-void UIRenderer::AddPage(std::shared_ptr<IPage> page)
-{
-    page->OnEnter();
-    _Pages.push_back(std::move(page));
 }

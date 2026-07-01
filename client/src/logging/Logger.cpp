@@ -2,21 +2,17 @@
 
 #include "exceptions/SysMonException.hpp"
 
-#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
 Logger::Logger(std::shared_ptr<IErrorDispatcher> dispatcher)
     : _Dispatcher(dispatcher)
 {
-    _ConsoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    _ConsoleSink->set_level(spdlog::level::debug);
-
     _FileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
         "logs/sysmon.log", false
     );
     _FileSink->set_level(spdlog::level::debug);
 
-    std::vector<spdlog::sink_ptr> sinks = {_ConsoleSink, _FileSink};
+    std::vector<spdlog::sink_ptr> sinks = {_FileSink};
     _SpdLogger = std::make_shared<spdlog::logger>("SysMon", sinks.begin(), sinks.end());
     _SpdLogger->set_level(spdlog::level::debug);
     _SpdLogger->set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");

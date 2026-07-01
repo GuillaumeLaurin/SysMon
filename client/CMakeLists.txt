@@ -21,7 +21,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/spdlog/ vendor/spdlog)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/vendor/nlohmann-json/ vendor/nlohmann-json)
 
-add_executable(${CLIENT_NAME}
+add_executable(${CLIENT_NAME} WIN32
     src/Client.cpp
     # --- Core ---
     src/core/DIContainer.cpp
@@ -53,6 +53,10 @@ add_executable(${CLIENT_NAME}
     src/gui/DX11Renderer.cpp
     src/gui/UIRenderer.cpp
     src/gui/Win32Window.cpp
+    src/gui/Router.cpp
+    src/gui/PageManager.cpp
+    # --- Pages ---
+    src/gui/pages/Dashboard.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)

@@ -3,7 +3,6 @@
 #include "reporter/ErrorQueue.hpp"
 
 #include "reporter/FileSink.hpp"
-#include "reporter/ConsoleSink.hpp"
 
 #include "reporter/JsonFormatter.hpp"
 
@@ -30,6 +29,10 @@
 
 #include "gui/DX11Renderer.hpp"
 #include "gui/UIRenderer.hpp"
+#include "gui/PageManager.hpp"
+#include "gui/Router.hpp"
+
+#include "gui/pages/Dashboard.hpp"
 
 Application::Application(HINSTANCE hInstance, int nCmdShow)
     : _Running(false), _Error(0), _HInstance(hInstance), _NCmdShow(nCmdShow)
@@ -59,7 +62,6 @@ void Application::Init()
     // reporters
     _Container.Register(std::make_shared<ErrorQueue>());
     _Container.Register(std::make_shared<FileSink>("SysMon", std::filesystem::current_path() / "logs" / "errors.log"));
-    _Container.Register(std::make_shared<ConsoleSink>("SysMonConsole", stderr));
     _Container.Register(std::make_shared<JsonFormatter>());
     _Container.Register(std::make_shared<RateLimitFilter>(10, 60000));
     _Container.Register(std::make_shared<SeverityFilter>(ErrorSeverity::Info));
@@ -84,14 +86,22 @@ void Application::Init()
         _Container.Resolve<ErrorDispatcher>())
     );
     // gui
+    _Container.Register(std::make_shared<PageManager>());
+    _Container.Register(std::make_shared<Router>(
+        _Container.Resolve<PageManager>()
+    ));
     _Container.Register(std::make_shared<DX11Renderer>());
     _Container.Register(std::make_shared<UIRenderer>(
-        _Container.Resolve<DX11Renderer>()
+        _Container.Resolve<DX11Renderer>(),
+        _Container.Resolve<Router>()
+    ));
+    // pages
+    _Container.Register(std::make_shared<Dashboard>(
+        _Container.Resolve<EventRepository>()
     ));
     // intialize dispatcher
     auto dispatcher = _Container.Resolve<ErrorDispatcher>();
     dispatcher->AddSink(_Container.Resolve<FileSink>());
-    dispatcher->AddSink(_Container.Resolve<ConsoleSink>());
     dispatcher->AddFilter(_Container.Resolve<RateLimitFilter>());
     dispatcher->AddFilter(_Container.Resolve<SeverityFilter>());
     dispatcher->SetFormatter(_Container.Resolve<JsonFormatter>());
@@ -106,6 +116,11 @@ void Application::Init()
         _Container.Resolve<DX11Renderer>()->SetResizeSize(w, h);
     });
     _Container.Resolve<UIRenderer>()->Initialize(_Window->GetHWND());
+    // Pages initialization
+    auto dashboard = _Container.Resolve<Dashboard>();
+    _Container.Resolve<PageManager>()->RegisterPage(dashboard->ClassName(), dashboard);
+    // Navigate to the dashboard
+    _Container.Resolve<Router>()->Navigate(dashboard->ClassName());
 }
 
 void Application::LogicLoop()

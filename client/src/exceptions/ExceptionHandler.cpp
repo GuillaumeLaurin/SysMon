@@ -4,10 +4,6 @@
 
 #include "reporter/DumpProvider.hpp"
 
-#include "reporter/ConsoleSink.hpp"
-
-#include "reporter/JsonFormatter.hpp"
-
 #include <typeinfo>
 
 #include <filesystem>
@@ -21,14 +17,6 @@ ExceptionHandler::ExceptionHandler(
       _OutputPath((std::filesystem::current_path() / "dumps").wstring()),
       _DumpType(DumpType::Full)
 {
-    if (dispatcher == nullptr)
-    {
-        auto sink = std::make_shared<ConsoleSink>("default", stderr);
-        auto formatter = std::make_shared<JsonFormatter>();
-
-        _ErrorDispatcher->AddSink(sink);
-        _ErrorDispatcher->SetFormatter(formatter);
-    }
 }
 
 void ExceptionHandler::Handle(const SysMonException& exception) noexcept

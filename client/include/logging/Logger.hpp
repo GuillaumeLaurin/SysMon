@@ -31,6 +31,5 @@ private:
 
     std::shared_ptr<IErrorDispatcher>    _Dispatcher;
     std::shared_ptr<spdlog::logger>      _SpdLogger;
-    std::shared_ptr<spdlog::sinks::sink> _ConsoleSink;
     std::shared_ptr<spdlog::sinks::sink> _FileSink;
 };
