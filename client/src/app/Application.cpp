@@ -15,6 +15,8 @@
 
 #include "exceptions/ExceptionHandler.hpp"
 
+#include "reporter/ErrorRecord.hpp"
+
 #include "storage/Database.hpp"
 
 #include "storage/ConfigRepository.hpp"
@@ -23,6 +25,7 @@
 #include "logging/Logger.hpp"
 
 #include "core/DriverConnector.hpp"
+#include "core/DriverService.hpp"
 #include "core/EventProcessor.hpp"
 
 #include "exceptions/SysMonException.hpp"
@@ -33,12 +36,67 @@
 #include "gui/Router.hpp"
 
 #include "gui/pages/Dashboard.hpp"
+#include "gui/pages/Processes.hpp"
+#include "gui/pages/Threads.hpp"
+#include "gui/pages/Images.hpp"
+#include "gui/pages/Settings.hpp"
 
+#include "gui/components/Sidebar.hpp"
+
+/**
+ * @file Application.cpp
+ * @brief Implements Application: DI wiring, main loop and shutdown sequence.
+ */
+
+namespace
+{
+    /** @brief Fills ErrorRecord's static app/system info fields (name, version, host, arch...). */
+    void PopulateErrorRecordEnvironment()
+    {
+        ErrorRecord::AppInfo.Name    = "SysMonClient";
+#ifdef SYSMON_VERSION
+        ErrorRecord::AppInfo.Version = SYSMON_VERSION;
+#endif
+#ifdef _DEBUG
+        ErrorRecord::AppInfo.Build   = "Debug";
+#else
+        ErrorRecord::AppInfo.Build   = "Release";
+#endif
+
+        char  hostname[MAX_COMPUTERNAME_LENGTH + 1];
+        DWORD hostnameSize = sizeof(hostname);
+
+        if (GetComputerNameA(hostname, &hostnameSize))
+            ErrorRecord::SysInfo.HostName = hostname;
+
+        char  username[256];
+        DWORD usernameSize = sizeof(username);
+
+        if (GetUserNameA(username, &usernameSize))
+            ErrorRecord::SysInfo.Username = username;
+
+        ErrorRecord::SysInfo.Os = "Windows";
+
+        SYSTEM_INFO systemInfo{};
+        GetNativeSystemInfo(&systemInfo);
+
+        switch (systemInfo.wProcessorArchitecture)
+        {
+            case PROCESSOR_ARCHITECTURE_AMD64: ErrorRecord::SysInfo.Arch = "x64";     break;
+            case PROCESSOR_ARCHITECTURE_ARM64: ErrorRecord::SysInfo.Arch = "arm64";   break;
+            case PROCESSOR_ARCHITECTURE_INTEL: ErrorRecord::SysInfo.Arch = "x86";     break;
+            default:                           ErrorRecord::SysInfo.Arch = "unknown"; break;
+        }
+    }
+}
+
+/** @brief Stores the process launch parameters; real initialization happens in Run(). */
 Application::Application(HINSTANCE hInstance, int nCmdShow)
     : _Running(false), _Error(0), _HInstance(hInstance), _NCmdShow(nCmdShow)
 {
 }
 
+/** @brief Initializes the services, runs the main loop and returns the process exit code. */
 uint32_t Application::Run() noexcept
 {
     Init();
@@ -48,17 +106,22 @@ uint32_t Application::Run() noexcept
     return _Error;
 }
 
+/** @brief Stops the background services and releases the UI resources. */
 void Application::Shutdown() noexcept
 {
     _Running = false;
     _Container.Resolve<EventProcessor>()->Stop();
+    _Container.Resolve<DriverConnector>()->Disconnect();
+    _Container.Resolve<DriverService>()->Stop();
     _Container.Resolve<UIRenderer>()->Shutdown();
     _Window->Shutdown();
     _Container.Resolve<ErrorDispatcher>()->Shutdown();
 }
 
+/** @brief Registers every service in the container and starts the driver pipeline. */
 void Application::Init()
 {
+    PopulateErrorRecordEnvironment();
     // reporters
     _Container.Register(std::make_shared<ErrorQueue>());
     _Container.Register(std::make_shared<FileSink>("SysMon", std::filesystem::current_path() / "logs" / "errors.log"));
@@ -79,6 +142,10 @@ void Application::Init()
     // logger
     _Container.Register(std::make_shared<Logger>(_Container.Resolve<ErrorDispatcher>()));
     // core
+    _Container.Register(std::make_shared<DriverService>(
+        L"SysMon",
+        _Container.Resolve<Logger>()
+    ));
     _Container.Register(std::make_shared<DriverConnector>());
     _Container.Register(std::make_shared<EventProcessor>(
         _Container.Resolve<DriverConnector>(), 
@@ -99,6 +166,27 @@ void Application::Init()
     _Container.Register(std::make_shared<Dashboard>(
         _Container.Resolve<EventRepository>()
     ));
+    _Container.Register(std::make_shared<Processes>(
+        _Container.Resolve<EventRepository>(),
+        _Container.Resolve<ConfigRepository>()
+    ));
+    _Container.Register(std::make_shared<Threads>(
+        _Container.Resolve<EventRepository>(),
+        _Container.Resolve<ConfigRepository>()
+    ));
+    _Container.Register(std::make_shared<Images>(
+        _Container.Resolve<EventRepository>(),
+        _Container.Resolve<ConfigRepository>()
+    ));
+    _Container.Register(std::make_shared<Settings>(
+        _Container.Resolve<ConfigRepository>(),
+        _Container.Resolve<EventRepository>()
+    ));
+    // components
+    _Container.Register(std::make_shared<Sidebar>(
+        _Container.Resolve<Router>(),
+        _Container.Resolve<PageManager>()
+    ));
     // intialize dispatcher
     auto dispatcher = _Container.Resolve<ErrorDispatcher>();
     dispatcher->AddSink(_Container.Resolve<FileSink>());
@@ -107,6 +195,7 @@ void Application::Init()
     dispatcher->SetFormatter(_Container.Resolve<JsonFormatter>());
     auto db = _Container.Resolve<Database>();
     db->Open((std::filesystem::current_path() / "sysmon.db").string());
+    _Container.Resolve<DriverService>()->Start();
     auto driverConnector  = _Container.Resolve<DriverConnector>();
     driverConnector->Connect(L"\\\\.\\SysMon");
     // window
@@ -117,12 +206,26 @@ void Application::Init()
     });
     _Container.Resolve<UIRenderer>()->Initialize(_Window->GetHWND());
     // Pages initialization
-    auto dashboard = _Container.Resolve<Dashboard>();
-    _Container.Resolve<PageManager>()->RegisterPage(dashboard->ClassName(), dashboard);
+    auto pageManager = _Container.Resolve<PageManager>();
+    auto sidebar     = _Container.Resolve<Sidebar>();
+
+    auto registerPage = [&](const char* id, std::shared_ptr<IPage> page) {
+        pageManager->RegisterPage(id, std::move(page));
+        sidebar->AddEntry(id);
+    };
+
+    registerPage(Dashboard::ClassName(), _Container.Resolve<Dashboard>());
+    registerPage(Processes::ClassName(), _Container.Resolve<Processes>());
+    registerPage(Threads::ClassName(),   _Container.Resolve<Threads>());
+    registerPage(Images::ClassName(),    _Container.Resolve<Images>());
+    registerPage(Settings::ClassName(),  _Container.Resolve<Settings>());
+
+    _Container.Resolve<UIRenderer>()->SetSidebar(sidebar);
     // Navigate to the dashboard
-    _Container.Resolve<Router>()->Navigate(dashboard->ClassName());
+    _Container.Resolve<Router>()->Navigate(Dashboard::ClassName());
 }
 
+/** @brief Background loop for non-UI work while the window is running. */
 void Application::LogicLoop()
 {
     while (_Running)

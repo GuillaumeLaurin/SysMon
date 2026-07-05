@@ -1,10 +1,17 @@
 #include "core/DriverConnector.hpp"
 
+/**
+ * @file DriverConnector.cpp
+ * @brief Implements DriverConnector using the Win32 CreateFile/ReadFile APIs.
+ */
+
+/** @brief Closes the device handle if still open. */
 DriverConnector::~DriverConnector()
 {
     Disconnect();
 }
 
+/** @brief Opens a handle to the driver device (e.g. L"\\\\.\\SysMon"). */
 bool DriverConnector::Connect(std::wstring_view devicePath) noexcept
 {
     if (IsConnected())
@@ -25,6 +32,7 @@ bool DriverConnector::Connect(std::wstring_view devicePath) noexcept
     return _File != INVALID_HANDLE_VALUE;
 }
 
+/** @brief Closes the device handle. */
 void DriverConnector::Disconnect() noexcept
 {
     if (IsConnected())
@@ -34,6 +42,7 @@ void DriverConnector::Disconnect() noexcept
     }
 }
 
+/** @brief Reads pending kernel events into @p buffer via ReadFile. */
 bool DriverConnector::Read(void* buffer, DWORD size, DWORD& bytesRead) noexcept
 {
     if (!IsConnected())
@@ -44,6 +53,7 @@ bool DriverConnector::Read(void* buffer, DWORD size, DWORD& bytesRead) noexcept
     return ReadFile(_File, buffer, size, &bytesRead, nullptr);
 }
 
+/** @brief Returns true while a device handle is open. */
 bool DriverConnector::IsConnected() const noexcept
 {
     return _File != INVALID_HANDLE_VALUE;

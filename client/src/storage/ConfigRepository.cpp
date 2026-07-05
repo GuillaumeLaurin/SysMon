@@ -1,10 +1,12 @@
 #include "storage/ConfigRepository.hpp"
 
+/** @brief Stores the database connection used to run the config queries. */
 ConfigRepository::ConfigRepository(std::shared_ptr<IDatabase> connexion)
     : _Connexion(connexion)
 {
 }
 
+/** @brief Runs `INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)` to upsert the entry. */
 bool ConfigRepository::Set(std::string_view key, std::string_view value) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -42,6 +44,7 @@ bool ConfigRepository::Set(std::string_view key, std::string_view value) noexcep
     return stepResult == SQLITE_DONE;
 }
 
+/** @brief Runs `SELECT value FROM config WHERE key = ?` and returns defaultValue if no row matches. */
 std::string ConfigRepository::Get(std::string_view key, std::string_view defaultValue) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -85,6 +88,7 @@ std::string ConfigRepository::Get(std::string_view key, std::string_view default
     return std::string(defaultValue);
 }
 
+/** @brief Runs `DELETE FROM config WHERE key = ?`. */
 bool ConfigRepository::Remove(std::string_view key) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -121,6 +125,7 @@ bool ConfigRepository::Remove(std::string_view key) noexcept
     return stepResult == SQLITE_DONE;
 }
 
+/** @brief Runs `SELECT 1 FROM config WHERE key = ?` and reports whether a row was returned. */
 bool ConfigRepository::Exists(std::string_view key) const noexcept
 {
     if (!_Connexion->IsOpen())

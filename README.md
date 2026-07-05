@@ -1,6 +1,6 @@
 # SysMon
 
-A Windows kernel driver (WDM/KMDF) that captures system events — process creation/exit, thread creation/exit, and image loads — and streams them to a user-mode client application in real time.
+A Windows kernel driver (WDM/KMDF) that captures system events — process creation/exit, thread creation/exit, thread injection, and image loads — and streams them to a user-mode client application in real time. The client is a full ImGui/DirectX 11 desktop application with SQLite-backed persistence, structured logging, and a dedicated error-reporting pipeline.
 
 ## Architecture
 
@@ -13,16 +13,17 @@ A Windows kernel driver (WDM/KMDF) that captures system events — process creat
 │  PsSetLoadImageNotifyRoutine       ──►  OnImageNotify()                   │
 │                      │                   │      │   SysMonClient.exe      │
 │                      ▼                   │      │        │                │
-│              FullItem<T> allocated       │      │   ReadFile loop         │
-│              pushed to g_State           │      │   (every 200 ms)        │
-│              (FastMutex-protected)       │      │        │                │
+│              FullItem<T> allocated       │      │  DriverConnector        │
+│              pushed to g_State           │      │  EventProcessor         │
+│              (FastMutex/ERESOURCE-       │      │  (poll thread)          │
+│               protected)                 │      │        │                │
 │                      │                   │ read │        ▼                │
-│              Device: \\Device\sysmon ────┼──────┼──► DisplayInfo()        │
-│              SymLink: \\.\sysmon         │      │    prints events        │
+│              Device: \\Device\sysmon ────┼──────┼──► EventRepository      │
+│              SymLink: \\.\sysmon         │      │    (SQLite) ──► ImGui   │
 └──────────────────────────────────────────┘      └─────────────────────────┘
 ```
 
-Each event callback allocates a `FullItem<T>` from the paged pool, fills the typed `Data` field, and pushes it into a thread-safe linked list (`g_State`). The client drains the list on every `IRP_MJ_READ` via `memcpy` into its buffer.
+Each event callback allocates a `FullItem<T>` from the paged pool, fills the typed `Data` field, and pushes it into a thread-safe linked list (`g_State`). `EventProcessor` polls the driver on a background thread, decodes each raw buffer back into typed events, and persists them through `EventRepository` into a local SQLite database. The GUI pages read from that repository and render the results with ImGui/DirectX 11.
 
 ---
 
@@ -35,6 +36,7 @@ Each event callback allocates a `FullItem<T>` from the paged pool, fills the typ
 | Thread created | `ThreadCreateInfo` | thread ID, owning process ID |
 | Thread exited | `ThreadExitInfo` | thread ID, owning process ID, exit code |
 | Image loaded | `ImageLoadInfo` | PID, image size, load address, image file path |
+| Remote thread created | `RemoteThread` | creator PID/TID, target PID/TID — flags cross-process thread creation (code injection) |
 
 All structs inherit `ItemHeader` which carries the event type tag, size, and a `LARGE_INTEGER` timestamp.
 
@@ -56,33 +58,71 @@ memcpy(buffer, &info->Data, size);
 
 ---
 
+## GUI client
+
+The client (`SysMonClient.exe`) is a windowed ImGui/DirectX 11 desktop application (no console) built around a small dependency-injection container and a layered architecture:
+
+| Layer | Key types | Responsibility |
+|-------|-----------|-----------------|
+| **App** | `Application`, `DIContainer` | Wires every service together and drives the window/logic loops |
+| **Core** | `DriverConnector`, `DriverService`, `EventProcessor` | Opens `\\.\sysmon`, installs/starts the driver, polls and decodes raw events on a background thread |
+| **Storage** | `Database`, `EventRepository`, `ConfigRepository` | SQLite-backed persistence for captured events and user settings |
+| **GUI** | `Win32Window`, `DX11Renderer`, `UIRenderer`, `Router`, `PageManager` | Window/swapchain setup, per-frame render loop, page navigation |
+| **Pages** | `Dashboard`, `Processes`, `Threads`, `Images`, `EventTablePage`, `Settings` | One `IPage` implementation per screen, listed in the sidebar |
+| **Components** | `Sidebar`, `StatCard`, `EventTable`, `FilterBar`, `AlertBanner` | Reusable `IComponent` building blocks shared across pages |
+| **Logging** | `Logger` (spdlog) | Structured application logs, separate from kernel `DbgPrint` |
+| **Reporter** | `ErrorDispatcher`, `ErrorQueue`, filters (`Severity`/`Category`/`RateLimit`), sinks (`Console`/`File`), `JsonFormatter`, `DumpProvider` | Centralized, thread-safe error pipeline: every `SysMonException` is queued, filtered, formatted as JSON and dispatched to sinks; crash dumps are written per fingerprint |
+| **Exceptions** | `SysMonException`, `ConfigException`, `DeviceException`, `StorageException`, `ExceptionHandler` | Typed exception hierarchy thrown via `THROW_*` macros and caught at the top level |
+
+User preferences (refresh interval, max visible rows, etc. — see `ConfigKeys.hpp`) are persisted through `ConfigRepository` and survive restarts.
+
+---
+
 ## Project structure
 
 ```
 SysMon/
 ├── .github/
-│   └── workflows/
-│       └── build.yml          # CI — build, sign, release
+│   ├── workflows/
+│   │   └── build.yml          # CI — build, sign, release
+│   └── RELEASE_NOTES.md       # Notes for the latest tagged release
+├── assets/                    # README screenshots
 ├── cmake/
 │   ├── FindWdk.cmake          # WDK auto-detection and target helper
 │   └── SignDriver.cmake       # Post-build signing script (cmake -P)
-├── include/
+├── include/                   # Kernel driver public headers
 │   ├── Common.h               # Kernel includes, logging macros, pool helpers
-│   ├── Device.h               # Device creation / notify callback declarations
+│   ├── Device.h                # Device creation / notify callback declarations
+│   ├── ExecutiveResource.h    # ERESOURCE RAII wrapper (shared/exclusive)
 │   ├── FastMutex.h            # FAST_MUTEX RAII wrapper
 │   ├── Globals.h              # Global driver state declaration
-│   ├── Locker.h               # Scoped lock guard
+│   ├── Locker.h               # Generic scoped lock guard
+│   ├── LookasideList.h        # Pool-efficient lookaside allocator wrapper
 │   ├── Public.h               # Shared event structs (kernel + client)
 │   └── Queue.h                # I/O queue declarations and IOCTL codes
-├── src/
+├── src/                       # Kernel driver implementation
 │   ├── Driver.cpp             # DriverEntry / DriverUnload (KMDF + WDM)
 │   ├── Device.cpp             # Device creation + all notify callbacks
 │   ├── Queue.cpp              # IRP dispatch — Read, Write, DeviceControl
-│   ├── FastMutex.cpp          # FastMutex implementation
+│   ├── ExecutiveResource.cpp
+│   ├── FastMutex.cpp
 │   └── Globals.cpp            # Thread-safe event queue implementation
-├── client/
-│   └── src/
-│       └── Client.cpp         # User-mode polling client
+├── client/                    # User-mode GUI client (SysMonClient.exe)
+│   ├── include/
+│   │   ├── app/               # Application root (DIContainer wiring, run loop)
+│   │   ├── core/              # DriverConnector, DriverService, EventProcessor
+│   │   ├── exceptions/        # SysMonException hierarchy + ExceptionHandler
+│   │   ├── gui/                # Router, PageManager, DX11Renderer, Win32Window
+│   │   │   ├── components/    # Reusable IComponent widgets (Sidebar, EventTable...)
+│   │   │   └── pages/         # IPage screens (Dashboard, Processes, Threads...)
+│   │   ├── interfaces/        # Abstract contracts (IPage, ILogger, IDatabase...)
+│   │   ├── logging/           # spdlog-backed Logger
+│   │   ├── macros/            # THROW_*/logging helper macros
+│   │   ├── reporter/          # Error pipeline: queue, dispatcher, filters, sinks
+│   │   └── storage/           # SQLite Database, EventRepository, ConfigRepository
+│   └── src/                   # Mirrors include/ — one .cpp per header
+│       └── Client.cpp         # wWinMain — application entry point
+├── vendor/                    # Git submodules: imgui, spdlog, nlohmann-json (+ vendored sqlite3)
 ├── inf/
 │   └── SysMon.inf.in          # INF template (expanded by CMake)
 ├── scripts/
@@ -102,8 +142,15 @@ SysMon/
 | Visual Studio | 2022 (17.x) with *Desktop development with C++* workload |
 | CMake | 3.20+ |
 | Windows Driver Kit (WDK) | 10.0.22621.0+ — [Download](https://learn.microsoft.com/windows-hardware/drivers/download-the-wdk) |
+| DirectX 11 capable GPU | Required to run the client (ImGui renders through `d3d11`/`dxgi`) |
 
 > The WDK version must match the Windows SDK version installed alongside Visual Studio.
+
+The client vendors ImGui, spdlog and nlohmann-json as git submodules; fetch them before configuring:
+
+```bat
+git submodule update --init --recursive
+```
 
 ---
 
@@ -228,15 +275,11 @@ cmake --build build/release --target install_driver
 build\release\SysMonClient.exe
 ```
 
-Expected output:
+`SysMonClient.exe` requires administrator privileges (declared in its manifest) since it starts the driver service and opens `\\.\sysmon`. On launch it:
 
-```
-[14:32:01.042] Process 7812 Created  | "C:\Windows\System32\notepad.exe"
-[14:32:01.055] Thread 8104 Created   | Process 7812
-[14:32:04.317] Image Loaded          | Process 7812 | notepad.exe  @ 0x7FF6A3B00000
-[14:32:09.001] Thread 8104 Exited    | Process 7812 | Code: 0
-[14:32:09.002] Process 7812 Exited   | Code: 0
-```
+- starts the `SysMon` service through `DriverService` (no-op if already running),
+- spawns the `EventProcessor` background thread that polls the driver and persists decoded events to a local SQLite database,
+- opens the ImGui/DirectX 11 window with the **Dashboard**, **Processes**, **Threads**, **Images** and **Settings** pages (see [Screenshots](#screenshots)).
 
 ### 5. Uninstall
 
@@ -326,6 +369,34 @@ ed nt!Kd_DEFAULT_MASK 0xFFFFFFFF
 - **WinDbg** — with a kernel debugger attached
 
 Messages are compiled out in Release builds (`#if DBG`).
+
+### Client-side logging and crash reports
+
+The GUI client logs independently of the driver through `Logger` (spdlog, console + rotating file sink). `Error`/`Fatal` log entries are additionally routed through the **reporter** pipeline (`ErrorDispatcher` → filters → `JsonFormatter` → `ConsoleSink`/`FileSink`), and `DumpProvider` writes a `.dmp` crash dump named after the error's fingerprint whenever an unhandled `SysMonException` reaches the top-level `ExceptionHandler`.
+
+---
+
+## Screenshots
+
+### Dashboard
+
+![Dashboard](assets/dashboard.png)
+
+### Processes
+
+![Processes](assets/processes.png)
+
+### Threads
+
+![Threads](assets/threads.png)
+
+### Images
+
+![Images](assets/images.png)
+
+### Settings
+
+![Settings](assets/settings.png)
 
 ---
 

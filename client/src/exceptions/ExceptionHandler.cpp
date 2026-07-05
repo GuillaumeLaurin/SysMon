@@ -8,6 +8,13 @@
 
 #include <filesystem>
 
+/**
+ * @file ExceptionHandler.cpp
+ * @brief Implements ExceptionHandler: exception-to-ErrorRecord conversion,
+ *        dispatch and fatal-error dump generation.
+ */
+
+/** @brief Constructs the exception handler with its dependencies. */
 ExceptionHandler::ExceptionHandler(
     std::shared_ptr<IErrorDispatcher> dispatcher,
     std::shared_ptr<IDumpProvider> dumpProvider
@@ -19,6 +26,7 @@ ExceptionHandler::ExceptionHandler(
 {
 }
 
+/** @brief Reports a typed SysMon exception; fatal ones also produce a dump. */
 void ExceptionHandler::Handle(const SysMonException& exception) noexcept
 {
     auto record  = exception.ToRecord();
@@ -32,6 +40,7 @@ void ExceptionHandler::Handle(const SysMonException& exception) noexcept
     }
 }
 
+/** @brief Reports an unknown/foreign exception captured via std::current_exception(). */
 void ExceptionHandler::HandleUnknown(std::exception_ptr ptr) noexcept
 {
     try
@@ -61,21 +70,25 @@ void ExceptionHandler::HandleUnknown(std::exception_ptr ptr) noexcept
     }
 }
 
+/** @brief Sets the directory/file path used for generated dumps. */
 void ExceptionHandler::SetOutputPath(const std::wstring& outputPath) noexcept
 {
     _OutputPath = outputPath;
 }
 
+/** @brief Sets the kind of dump produced on fatal errors. */
 void ExceptionHandler::SetDumpType(DumpType dumpType) noexcept
 {
     _DumpType = dumpType;
 }
 
+/** @brief Dispatcher used to emit the resulting error records. */
 std::shared_ptr<IErrorDispatcher> ExceptionHandler::Dispatcher() const noexcept
 {
     return _ErrorDispatcher;
 }
 
+/** @brief Builds an ErrorRecord for exceptions that carry no SysMon metadata. */
 ErrorRecord ExceptionHandler::BuildMinimalRecord(
     std::string category, 
     std::string message, 
@@ -89,6 +102,7 @@ ErrorRecord ExceptionHandler::BuildMinimalRecord(
 
         record.UptimeMs     = GetTickCount64();
         record.Uuid         = std::to_string(record.UptimeMs);
+        record.Timestamp    = ft;
         record.Severity     = ErrorSeverity::Error;
         record.Category     = category;
         record.UserId       = SysMonException::CaptureUserId();

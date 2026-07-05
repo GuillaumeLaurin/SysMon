@@ -1,3 +1,8 @@
+/**
+ * @file ILogger.hpp
+ * @brief Contract for the leveled application logger and its LOG_* helper macros.
+ */
+
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -10,22 +15,64 @@
 
 #include <spdlog/fmt/fmt.h>
 
+/**
+ * @brief Source location captured with every log entry.
+ */
 struct LogContext
 {
-    const char* File;
-    const char* Function;
-    ULONG       Line;
+    const char* File;     ///< Source file emitting the log
+    const char* Function; ///< Function emitting the log
+    ULONG       Line;     ///< Line number in the source file
 };
 
+/**
+ * @brief Leveled application logger. Use the LOG_* macros below so the
+ *        source location is captured automatically.
+ *
+ * @note Implementations are expected to be thread-safe, since the LOG_* macros
+ *       may be invoked concurrently from any worker thread.
+ */
 class ILogger
 {
 public:
+    /**
+     * @brief Virtual destructor allowing safe destruction through the interface pointer.
+     */
     virtual ~ILogger() = default;
 
+    /**
+     * @brief Logs a debug-level message.
+     * @param message Message text to log.
+     * @param ctx Source location captured at the call site.
+     */
     virtual void Debug(std::string_view message, const LogContext& ctx) noexcept = 0;
+
+    /**
+     * @brief Logs an info-level message.
+     * @param message Message text to log.
+     * @param ctx Source location captured at the call site.
+     */
     virtual void Info(std::string_view message, const LogContext& ctx) noexcept = 0;
+
+    /**
+     * @brief Logs a warning-level message.
+     * @param message Message text to log.
+     * @param ctx Source location captured at the call site.
+     */
     virtual void Warning(std::string_view message, const LogContext& ctx) noexcept = 0;
+
+    /**
+     * @brief Logs an error-level message; also reported to the error dispatcher.
+     * @param message Message text to log.
+     * @param ctx Source location captured at the call site.
+     */
     virtual void Error(std::string_view message, const LogContext& ctx) noexcept = 0;
+
+    /**
+     * @brief Logs a fatal-level message; also reported to the error dispatcher.
+     * @param message Message text to log.
+     * @param ctx Source location captured at the call site.
+     */
     virtual void Fatal(std::string_view message, const LogContext& ctx) noexcept = 0;
 };
 

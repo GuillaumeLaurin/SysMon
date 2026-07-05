@@ -1,5 +1,6 @@
 #include "storage/Database.hpp"
 
+/** @brief Closes any existing connection, opens the SQLite file at @p path via sqlite3_open, then runs Migrate(). */
 bool Database::Open(std::string_view path) noexcept
 {
     if (IsOpen())
@@ -18,6 +19,7 @@ bool Database::Open(std::string_view path) noexcept
     return Migrate();
 }
 
+/** @brief Closes the connection via sqlite3_close and resets the handle, if currently open. */
 void Database::Close() noexcept
 {
     if (!IsOpen())
@@ -29,11 +31,13 @@ void Database::Close() noexcept
     _Connexion = nullptr;
 }
 
+/** @brief Returns whether the underlying sqlite3 handle is non-null. */
 bool Database::IsOpen() const noexcept
 {
     return _Connexion != nullptr;
 }
 
+/** @brief Runs `CREATE TABLE IF NOT EXISTS` for the `events` and `config` tables via sqlite3_exec. */
 bool Database::Migrate() noexcept
 {
     if (!IsOpen())
@@ -61,6 +65,7 @@ bool Database::Migrate() noexcept
     return result == SQLITE_OK;
 }
 
+/** @brief Returns the raw sqlite3 connection handle. */
 sqlite3* Database::Handle() const noexcept
 {
     return _Connexion;

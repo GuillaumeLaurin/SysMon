@@ -8,6 +8,11 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
+/**
+ * @brief Creates the D3D11 device and swap chain (falling back to the WARP
+ *        software driver if hardware acceleration is unsupported), builds the
+ *        render target, and initializes the ImGui Win32/DX11 backends.
+ */
 bool DX11Renderer::Initialize(HWND hwnd)
 {
   DXGI_SWAP_CHAIN_DESC sd = {};
@@ -61,6 +66,10 @@ bool DX11Renderer::Initialize(HWND hwnd)
   return true;
 }
 
+/**
+ * @brief Applies any pending swap-chain resize (recreating the render target),
+ *        then starts a new ImGui/DX11/Win32 frame.
+ */
 void DX11Renderer::BeginFrame()
 {
     if (_ResizeWidth != 0 && _ResizeHeight != 0) 
@@ -77,6 +86,10 @@ void DX11Renderer::BeginFrame()
     ImGui::NewFrame();
 }
 
+/**
+ * @brief Renders the ImGui draw data into the render target, clears the
+ *        background with _ClearColor, and presents the swap chain (v-synced).
+ */
 void DX11Renderer::EndFrame()
 {
     ImGui::Render();
@@ -88,6 +101,11 @@ void DX11Renderer::EndFrame()
     _SwapChain->Present(1, 0);
 }
 
+/**
+ * @brief Shuts down the ImGui DX11/Win32 backends and the ImGui context, then
+ *        releases the render target view and the D3D11 swap chain, device
+ *        context and device, in that order.
+ */
 void DX11Renderer::Shutdown()
 {
     ImGui_ImplDX11_Shutdown();
@@ -100,12 +118,14 @@ void DX11Renderer::Shutdown()
     _Device->Release();
 }
 
+/** @brief Stores the requested size; applied at the next BeginFrame() call. */
 void DX11Renderer::SetResizeSize(UINT width, UINT height)
 {
     _ResizeWidth = width;
     _ResizeHeight = height;
 }
 
+/** @brief Fetches the swap-chain back buffer and creates a render-target view for it. */
 bool DX11Renderer::CreateRenderTarget()
 {
     ID3D11Texture2D* backBuffer = nullptr;
@@ -115,6 +135,7 @@ bool DX11Renderer::CreateRenderTarget()
     return res == S_OK;
 }
 
+/** @brief Releases the render-target view, if any, and resets the pointer to nullptr. */
 void DX11Renderer::CleanupRenderTarget()
 {
     if (_RenderTarget) 

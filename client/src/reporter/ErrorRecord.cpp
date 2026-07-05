@@ -1,13 +1,21 @@
+/**
+ * @file ErrorRecord.cpp
+ * @brief Implementation of ErrorRecord's fingerprint computation.
+ */
+
 #include "reporter/ErrorRecord.hpp"
 
 #include <sstream>
 
 #include <iomanip>
 
+/** @brief Process-wide application info, set once at startup. */
 SysMon::ApplicationInformation ErrorRecord::AppInfo{};
 
+/** @brief Process-wide host info, set once at startup. */
 SysMon::SystemInformation ErrorRecord::SysInfo{};
 
+/** @brief Folds one chunk of bytes into the running FNV-1a hash. */
 uint64_t ErrorRecord::Fnv1a(std::string_view data, uint64_t hash)
 {
     constexpr uint64_t FNV_PRIME = 0x100000001B3;
@@ -21,6 +29,10 @@ uint64_t ErrorRecord::Fnv1a(std::string_view data, uint64_t hash)
     return hash;
 }
 
+/**
+ * @brief Hashes file, function, a stacktrace prefix and line number (FNV-1a)
+ *        to produce a stable per-error-site identifier.
+ */
 std::string ErrorRecord::ComputeFingerprint(const ErrorRecord& report)
 {
     constexpr uint64_t FNV_OFFSET_BASIS = 0xCBF29CE484222325;

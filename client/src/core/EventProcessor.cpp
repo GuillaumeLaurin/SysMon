@@ -6,6 +6,12 @@
 
 #include <unordered_map>
 
+/**
+ * @file EventProcessor.cpp
+ * @brief Implements EventProcessor: driver polling loop and raw event decoding.
+ */
+
+/** @brief Constructs the event processor with its dependencies. */
 EventProcessor::EventProcessor(
     std::shared_ptr<IDriverConnector> connector,
     std::shared_ptr<IEventRepository> repository,
@@ -14,11 +20,13 @@ EventProcessor::EventProcessor(
 {
 }
 
+/** @brief Stops the worker thread if still running. */
 EventProcessor::~EventProcessor()
 {
     Stop();
 }
 
+/** @brief Starts the polling thread. */
 void EventProcessor::Start() noexcept
 {
     if (!_Running)
@@ -28,6 +36,7 @@ void EventProcessor::Start() noexcept
     }
 }
 
+/** @brief Signals the polling thread to stop and joins it. */
 void EventProcessor::Stop() noexcept
 {
     if (_Running)
@@ -41,6 +50,7 @@ void EventProcessor::Stop() noexcept
     }
 }
 
+/** @brief Polling loop: reads from the driver and hands buffers to ProcessBuffer(). */
 void EventProcessor::WorkerLoop()
 {
     int size = 1 << 16;
@@ -59,6 +69,7 @@ void EventProcessor::WorkerLoop()
     }
 }
 
+/** @brief Walks a raw driver buffer and converts each ItemHeader-based event to an EventRecord. */
 void EventProcessor::ProcessBuffer(BYTE* buffer, DWORD size)
 {
     while (size > 0)
@@ -147,6 +158,7 @@ void EventProcessor::ProcessBuffer(BYTE* buffer, DWORD size)
     }
 }
 
+/** @brief Converts an NT device path (\\Device\\HarddiskVolumeX\\...) to its DOS drive form. */
 std::wstring EventProcessor::GetDosNameFromNTName(PCWSTR path)
 {
     if (path[0] != L'\\')
@@ -202,6 +214,7 @@ std::wstring EventProcessor::GetDosNameFromNTName(PCWSTR path)
     return path;
 }
 
+/** @brief UTF-16 to UTF-8 conversion helper. */
 std::string EventProcessor::WStringToString(const std::wstring& wstr)
 {
     auto size = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), -1, nullptr, 0, nullptr, nullptr);

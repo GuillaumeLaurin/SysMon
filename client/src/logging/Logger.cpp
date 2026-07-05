@@ -4,6 +4,13 @@
 
 #include <spdlog/sinks/basic_file_sink.h>
 
+/**
+ * @file Logger.cpp
+ * @brief Implements Logger: spdlog-backed logging plus forwarding of
+ *        Error/Fatal entries to the error dispatcher.
+ */
+
+/** @brief Constructs the logger and its spdlog backend. */
 Logger::Logger(std::shared_ptr<IErrorDispatcher> dispatcher)
     : _Dispatcher(dispatcher)
 {
@@ -18,24 +25,28 @@ Logger::Logger(std::shared_ptr<IErrorDispatcher> dispatcher)
     _SpdLogger->set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
 }
 
+/** @brief Logs a debug-level message. */
 void Logger::Debug(std::string_view message, const LogContext& /*ctx*/) noexcept
 {
     _SpdLogger->debug(message);
     _SpdLogger->flush();
 }
 
+/** @brief Logs an info-level message. */
 void Logger::Info(std::string_view message, const LogContext& /*ctx*/) noexcept
 {
     _SpdLogger->info(message);
     _SpdLogger->flush();
 }
 
+/** @brief Logs a warning-level message. */
 void Logger::Warning(std::string_view message, const LogContext& /*ctx*/) noexcept
 {
     _SpdLogger->warn(message);
     _SpdLogger->flush();
 }
 
+/** @brief Logs an error-level message and reports it to the dispatcher. */
 void Logger::Error(std::string_view message, const LogContext& ctx) noexcept
 {
     _SpdLogger->error(message);
@@ -46,6 +57,7 @@ void Logger::Error(std::string_view message, const LogContext& ctx) noexcept
     }
 }
 
+/** @brief Logs a fatal-level message and reports it to the dispatcher. */
 void Logger::Fatal(std::string_view message, const LogContext& ctx) noexcept
 {
     _SpdLogger->critical(message);
@@ -56,6 +68,7 @@ void Logger::Fatal(std::string_view message, const LogContext& ctx) noexcept
     }
 }
 
+/** @brief Builds an ErrorRecord from a log entry and dispatches it. */
 void Logger::DispatcherLog(
     std::string_view  message, 
     const LogContext& ctx, 
@@ -70,6 +83,7 @@ void Logger::DispatcherLog(
 
     record.UptimeMs     = GetTickCount64();
     record.Uuid         = std::to_string(record.UptimeMs);
+    record.Timestamp    = ft;
     record.Severity     = severity;
     record.Category     = category;
     record.UserId       = SysMonException::CaptureUserId();

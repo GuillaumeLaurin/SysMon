@@ -2,6 +2,12 @@
 #include "Public.h"
 #include "Device.h"
 
+/**
+ * @file Queue.cpp
+ * @brief Implements the I/O queue setup and I/O callbacks/dispatch routines
+ *        declared in Queue.h (KMDF and WDM variants).
+ */
+
 #ifdef USE_KMDF
 
 /**
@@ -57,7 +63,7 @@ EvtIoDeviceControl(
 
     switch (IoControlCode)
     {
-        case IOCTL_TEMPLATE_GET_VERSION:
+        case IOCTL_SYSMON_GET_VERSION:
         {
             PULONG pVersion;
             status = WdfRequestRetrieveOutputBuffer(
@@ -72,10 +78,10 @@ EvtIoDeviceControl(
 
             break;
         }
-        case IOCTL_TEMPLATE_DO_OPERATION:
+        case IOCTL_SYSMON_DO_OPERATION:
         {
-            /// @todo : implement the operation
-            LOG_INFO("IOCTL_TEMPLATE_DO_OPERATION received");
+            /** @todo Implement the operation. */
+            LOG_INFO("IOCTL_SYSMON_DO_OPERATION received");
             status   = STATUS_SUCCESS;
             bytesOut = 0;
             break;
@@ -159,7 +165,7 @@ EvtIoWrite(
     UNREFERENCED_PARAMETER(Length);
 
     LOG_TRACE("EvtIoWrite - %Iu bytes request", Length);
-    /// @todo : process the written data
+    /** @todo Process the written data. */
     WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, 0);
 }
 
@@ -185,7 +191,7 @@ DispatchDeviceControl(
 
     switch (ioctlCode)
     {
-        case IOCTL_TEMPLATE_GET_VERSION:
+        case IOCTL_SYSMON_GET_VERSION:
         {
             ULONG outLen = stack->Parameters.DeviceIoControl.OutputBufferLength;
             if (outLen < sizeof(ULONG))
@@ -199,9 +205,9 @@ DispatchDeviceControl(
             bytesOut    = sizeof(ULONG);
             break;
         }
-        case IOCTL_TEMPLATE_DO_OPERATION:
+        case IOCTL_SYSMON_DO_OPERATION:
         {   
-            LOG_INFO("IOCTL_MYDRIVER_DO_OPERATION received (WDM)");
+            LOG_INFO("IOCTL_SYSMON_DO_OPERATION received (WDM)");
             status   = STATUS_SUCCESS;
             bytesOut = 0;
             break;
@@ -292,7 +298,7 @@ DispatchWrite(
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchWrite");
-    /// @todo : read data from the system buffer
+    /** @todo Read data from the system buffer. */
     return CompleteRequest(Irp);
 }
 

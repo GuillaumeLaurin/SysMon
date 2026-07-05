@@ -11,85 +11,86 @@ constexpr const char* KNOWN_TYPES[] = {
 
 constexpr auto REFRESH_INTERVAL = std::chrono::milliseconds(500);
 
+namespace
+{
+    ImVec4 ColorForType(std::string_view type)
+    {
+        if (type == "RemoteThread")
+            return ImVec4(0.94f, 0.32f, 0.29f, 1.0f);
+
+        if (type == "ImageLoad")
+            return ImVec4(0.55f, 0.49f, 0.96f, 1.0f);
+
+        return ImVec4(0.25f, 0.80f, 0.49f, 1.0f);
+    }
+}
+
+/** @brief Constructs the dashboard and its stat cards for every known event type. */
 Dashboard::Dashboard(std::shared_ptr<IEventRepository> eventRepository)
     : _EventRepository(eventRepository)
 {
+    for (const char* type : KNOWN_TYPES)
+        _Cards.emplace_back(type, ColorForType(type));
 }
 
+/** @brief Forces a cache refresh when the page becomes active. */
 void Dashboard::OnEnter()
 {
     RefreshCache();
 }
 
+/** @brief Clears the cached per-type counters when the page becomes inactive. */
 void Dashboard::OnExit()
 {
     _Cache.clear();
 }
 
+/** @brief Periodically refreshes the counters from the repository. */
 void Dashboard::Update()
 {
     auto now = std::chrono::steady_clock::now();
 
     if ((now - _LastRefresh) < REFRESH_INTERVAL)
         return;
-    
+
     RefreshCache();
     _LastRefresh = now;
 }
 
+/** @brief Draws the stat cards and the alert banner. */
 void Dashboard::Render()
 {
     ImGui::Begin(GetTitle());
 
-    auto remoteThreadCount = _Cache.count("RemoteThread") ? _Cache.at("RemoteThread") : 0;
+    _Banner.Update();
+    _Banner.Render();
 
-    if (remoteThreadCount > 0)
+    for (std::size_t i = 0; i < _Cards.size(); ++i)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.32f, 0.29f, 1.0f));
-        ImGui::Text("%zu alerte(s) RemoteThread detectee(s)", remoteThreadCount);
-        ImGui::PopStyleColor();
-        ImGui::Separator();
-    }
+        _Cards[i].Update();
+        _Cards[i].Render();
 
-    for (int i = 0; i < static_cast<int>(std::size(KNOWN_TYPES)); ++i)
-    {
-        const char* type = KNOWN_TYPES[i];
-        auto count = _Cache.count(type) ? _Cache.at(type) : 0;
-
-        ImVec4 color;
-
-        if (std::string_view(type) == "RemoteThread")
-            color = ImVec4(0.94f, 0.32f, 0.29f, 1.0f);
-        else if (std::string_view(type) == "ImageLoad")
-            color = ImVec4(0.55f, 0.49f, 0.96f, 1.0f);
-        else
-            color = ImVec4(0.25f, 0.80f, 0.49f, 1.0f);
-        
-        ImGui::BeginChild(type, ImVec2(150, 70), true);
-        ImGui::PushStyleColor(ImGuiCol_Text, color);
-        ImGui::Text("%s", type);
-        ImGui::PopStyleColor();
-        ImGui::Text("%zu", count);
-        ImGui::EndChild();
-
-        if (i + 1 < static_cast<int>(std::size(KNOWN_TYPES)))
+        if (i + 1 < _Cards.size())
             ImGui::SameLine();
     }
 
     ImGui::End();
 }
 
+/** @brief Human-readable title shown in the sidebar/header. */
 const char* Dashboard::GetTitle() const
 {
     return Name;
 }
 
+/** @brief Returns true when a RemoteThread event has been recorded. */
 bool Dashboard::HasBadge() const
 {
     auto it = _Cache.find("RemoteThread");
     return it != _Cache.end() && it->second > 0;
 }
 
+/** @brief Recomputes the per-type counters from the stored events. */
 void Dashboard::RefreshCache()
 {
     _Cache.clear();
@@ -99,4 +100,17 @@ void Dashboard::RefreshCache()
     {
         _Cache[record.Type] += 1;
     }
+
+    for (auto& card : _Cards)
+    {
+        auto it = _Cache.find(card.Label());
+        card.SetValue(it != _Cache.end() ? it->second : 0);
+    }
+
+    auto remoteThreadCount = _Cache.count("RemoteThread") ? _Cache.at("RemoteThread") : 0;
+
+    if (remoteThreadCount > 0)
+        _Banner.SetMessage(std::to_string(remoteThreadCount) + " RemoteThread alert(s) detected");
+    else
+        _Banner.Clear();
 }

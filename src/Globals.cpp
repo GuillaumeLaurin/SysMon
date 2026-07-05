@@ -6,6 +6,15 @@
 
 #include "Locker.h"
 
+/**
+ * @file Globals.cpp
+ * @brief Implements Globals, declared in Globals.h, and defines the single
+ *        driver-wide g_State instance.
+ */
+
+/**
+ * @brief Initializes the lists, locks and counters.
+ */
 VOID Globals::Init(_In_ ULONG maxCount, _In_ ULONG processesMaxCount)
 {
     InitializeListHead(&_ItemsHead);
@@ -18,12 +27,21 @@ VOID Globals::Init(_In_ ULONG maxCount, _In_ ULONG processesMaxCount)
     _NewProcessesMaxCount = processesMaxCount;
 }
 
+/**
+ * @brief Releases the locks.
+ *
+ * @note Assumes both lists have already been drained by the caller.
+ */
 VOID Globals::Destroy()
 {
     _Lock.Destroy();
     _NewProcessesLock.Delete();
 }
 
+/**
+ * @brief Appends an event item at the tail of the item list, evicting the
+ *        oldest entry first if the list is already full.
+ */
 VOID Globals::AddItem(_In_ LIST_ENTRY* entry)
 {
     Locker locker(_Lock);
@@ -40,6 +58,9 @@ VOID Globals::AddItem(_In_ LIST_ENTRY* entry)
     _Count++;
 }
 
+/**
+ * @brief Inserts an event item back at the head of the item list.
+ */
 VOID Globals::AddHeadItem(_In_ LIST_ENTRY* entry)
 {
     Locker locker(_Lock);
@@ -47,6 +68,9 @@ VOID Globals::AddHeadItem(_In_ LIST_ENTRY* entry)
     _Count++;
 }
 
+/**
+ * @brief Pops the oldest event item from the item list.
+ */
 LIST_ENTRY* Globals::RemoveItem()
 {
     Locker locker(_Lock);
@@ -62,6 +86,9 @@ LIST_ENTRY* Globals::RemoveItem()
     return item;
 }
 
+/**
+ * @brief Registers a newly created process for remote-thread detection.
+ */
 bool Globals::AddNewProcess(_In_ LIST_ENTRY* entry)
 {
     Locker locker(_NewProcessesLock);
@@ -76,6 +103,11 @@ bool Globals::AddNewProcess(_In_ LIST_ENTRY* entry)
     return true;
 }
 
+/**
+ * @brief Removes (and frees) the tracked process matching @p pid.
+ *
+ * @note Performs a linear scan of the new-processes list under the lock.
+ */
 bool Globals::RemoveProcess(_In_ HANDLE pid)
 {
     auto id = HandleToULong(pid);
@@ -97,6 +129,9 @@ bool Globals::RemoveProcess(_In_ HANDLE pid)
     return false;
 }
 
+/**
+ * @brief Frees every entry of the new-processes list.
+ */
 VOID Globals::ClearNewProcesses()
 {
     Locker locker(_NewProcessesLock);
@@ -110,4 +145,7 @@ VOID Globals::ClearNewProcesses()
     }
 }
 
+/**
+ * @brief The single global instance holding all driver state.
+ */
 Globals g_State;

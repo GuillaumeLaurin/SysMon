@@ -26,6 +26,7 @@ add_executable(${CLIENT_NAME} WIN32
     # --- Core ---
     src/core/DIContainer.cpp
     src/core/DriverConnector.cpp
+    src/core/DriverService.cpp
     src/core/EventProcessor.cpp
     # --- Reporter ---
     src/reporter/ErrorQueue.cpp
@@ -55,8 +56,19 @@ add_executable(${CLIENT_NAME} WIN32
     src/gui/Win32Window.cpp
     src/gui/Router.cpp
     src/gui/PageManager.cpp
+    # --- Components ---
+    src/gui/components/StatCard.cpp
+    src/gui/components/AlertBanner.cpp
+    src/gui/components/FilterBar.cpp
+    src/gui/components/EventTable.cpp
+    src/gui/components/Sidebar.cpp
     # --- Pages ---
     src/gui/pages/Dashboard.cpp
+    src/gui/pages/EventTablePage.cpp
+    src/gui/pages/Processes.cpp
+    src/gui/pages/Threads.cpp
+    src/gui/pages/Images.cpp
+    src/gui/pages/Settings.cpp
 )
 
 target_compile_features(${CLIENT_NAME} PRIVATE cxx_std_17)
@@ -71,6 +83,7 @@ target_compile_options(${CLIENT_NAME} PRIVATE
 )
 
 target_link_options(${CLIENT_NAME} PRIVATE
+    "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
     $<$<CONFIG:Release>:/LTCG>
 )
 
@@ -105,4 +118,7 @@ set_target_properties(${CLIENT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
-target_compile_definitions(${CLIENT_NAME} PRIVATE WIN32_LEAN_AND_MEAN)
+target_compile_definitions(${CLIENT_NAME} PRIVATE
+    WIN32_LEAN_AND_MEAN
+    SYSMON_VERSION="${PROJECT_VERSION}"
+)

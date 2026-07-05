@@ -1,10 +1,12 @@
 #include "storage/EventRepository.hpp"
 
+/** @brief Stores the database connection used to run the event queries. */
 EventRepository::EventRepository(std::shared_ptr<IDatabase> connexion)
     : _Connexion(connexion)
 {
 }
 
+/** @brief Runs `INSERT INTO events (id, type, timestamp, pid, tid, data) VALUES (...)` for the given record. */
 bool EventRepository::Insert(const EventRecord& record) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -46,6 +48,7 @@ bool EventRepository::Insert(const EventRecord& record) noexcept
     return stepResult == SQLITE_DONE;
 }   
 
+/** @brief Runs `SELECT * FROM events` and maps every row to an EventRecord. */
 std::vector<EventRecord> EventRepository::QueryAll() noexcept
 {
     if (!_Connexion->IsOpen())
@@ -92,6 +95,7 @@ std::vector<EventRecord> EventRepository::QueryAll() noexcept
     return records;
 }
 
+/** @brief Runs `SELECT * FROM events WHERE type = ?` and maps every matching row to an EventRecord. */
 std::vector<EventRecord> EventRepository::QueryByType(std::string_view type) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -144,6 +148,7 @@ std::vector<EventRecord> EventRepository::QueryByType(std::string_view type) noe
     return records;
 }
 
+/** @brief Runs `SELECT * FROM events WHERE pid = ?` and maps every matching row to an EventRecord. */
 std::vector<EventRecord> EventRepository::QueryByPid(ULONG pid) noexcept
 {
     if (!_Connexion->IsOpen())
@@ -196,6 +201,7 @@ std::vector<EventRecord> EventRepository::QueryByPid(ULONG pid) noexcept
     return records;
 }
 
+/** @brief Runs `DELETE FROM events` via sqlite3_exec. */
 bool EventRepository::Clear() noexcept
 {
     if (!_Connexion->IsOpen())

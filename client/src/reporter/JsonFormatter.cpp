@@ -1,11 +1,17 @@
+/**
+ * @file JsonFormatter.cpp
+ * @brief Implementation of JsonFormatter.
+ */
+
 #include "reporter/JsonFormatter.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include <sstream>
 #include <ostream>
-#include <iomanip> 
+#include <iomanip>
 
+/** @brief Builds a nlohmann::json object covering record, app info and system info, and dumps it with 4-space indentation. */
 std::string JsonFormatter::Format(const ErrorRecord& record) const
 {
     nlohmann::json object = {
@@ -49,12 +55,14 @@ std::string JsonFormatter::Format(const ErrorRecord& record) const
     return object.dump(4);
 }
 
+/** @brief Always returns "application/json". */
 std::string_view JsonFormatter::ContentType() const noexcept
 {
 
     return "application/json";
 }
 
+/** @brief Switches over ErrorSeverity, returning "Unknown" for unrecognized values. */
 std::string JsonFormatter::SeverityToString(ErrorSeverity severity)
 {
     switch (severity)
@@ -86,13 +94,22 @@ std::string JsonFormatter::SeverityToString(ErrorSeverity severity)
     };
 }
 
+/**
+ * @brief Reinterprets the LARGE_INTEGER as a FILETIME and formats it as
+ *        ISO-8601 with a "Z" (UTC) suffix, without any local-time conversion.
+ */
 std::string JsonFormatter::TimestampToIso8601(LARGE_INTEGER timestamp)
 {
-    FILETIME local;
+    FILETIME ft;
+    ft.dwLowDateTime  = timestamp.LowPart;
+    ft.dwHighDateTime = static_cast<DWORD>(timestamp.HighPart);
 
-    FileTimeToLocalFileTime((FILETIME*)&timestamp, &local);
-    SYSTEMTIME st;
-    FileTimeToSystemTime(&local, &st);
+    // The suffix "Z" means UTC: format the FILETIME (already UTC) directly,
+    // without converting to local time.
+    SYSTEMTIME st{};
+
+    if (!FileTimeToSystemTime(&ft, &st))
+        return "1970-01-01T00:00:00.000Z";
 
     std::ostringstream oss;
 
@@ -107,6 +124,7 @@ std::string JsonFormatter::TimestampToIso8601(LARGE_INTEGER timestamp)
     return oss.str();
 }
 
+/** @brief Formats the address as a zero-padded, uppercase 0x-prefixed hex string. */
 std::string JsonFormatter::AddressToHexString(ULONG_PTR address)
 {
     std::ostringstream oss;
@@ -116,6 +134,7 @@ std::string JsonFormatter::AddressToHexString(ULONG_PTR address)
     return oss.str();
 }
 
+/** @brief Maps each metadata pair to a {"key", "value"} JSON object. */
 nlohmann::json JsonFormatter::MetadataToJsonArray(const SysMon::Params& params)
 {
     auto array = nlohmann::json::array();

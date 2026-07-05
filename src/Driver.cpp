@@ -4,7 +4,21 @@
 #include "Queue.h"
 #include "Globals.h"
 
+/**
+ * @file Driver.cpp
+ * @brief Driver entry point, device-add and unload routines for both the
+ *        KMDF and WDM build variants.
+ */
+
+/**
+ * @brief Maximum number of pending event items retained in g_State.
+ */
 #define HARDCODED_LIMIT 10000
+
+/**
+ * @brief Maximum number of newly created processes tracked for
+ *        remote-thread detection.
+ */
 #define MAX_NEW_PROCESS 300
 
 #ifdef USE_KMDF

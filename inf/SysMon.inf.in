@@ -25,14 +25,14 @@ DefaultDestDir    = 12          ; %windir%\System32\drivers
 %DeviceName% = @PROJECT_NAME@_Device, Root\@PROJECT_NAME@
 
 ; ------------------------------------------------------------------------------
-[MyKernelDriver_Device.NT]
+[SysMon_Device.NT]
 CopyFiles = @PROJECT_NAME@_Files
 
 [@PROJECT_NAME@_Files]
 @PROJECT_NAME@.sys,,, 0x00000040   ; COPYFLG_OVERWRITE_OLDER_ONLY
 
 ; ------------------------------------------------------------------------------
-[MyKernelDriver_Device.NT.Services]
+[SysMon_Device.NT.Services]
 AddService = @PROJECT_NAME@, 0x00000002, @PROJECT_NAME@_Service
 
 [@PROJECT_NAME@_Service]
@@ -46,7 +46,7 @@ LoadOrderGroup = Extended Base
 ; ------------------------------------------------------------------------------
 ;  Sections Debug
 ; ------------------------------------------------------------------------------
-[MyKernelDriver_Device.NT.Wdf]
+[SysMon_Device.NT.Wdf]
 KmdfService = @PROJECT_NAME@, @PROJECT_NAME@_wdfsect
 
 [@PROJECT_NAME@_wdfsect]

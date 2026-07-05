@@ -12,29 +12,73 @@
 #include <thread>
 #include <memory>
 
+/**
+ * @file EventProcessor.hpp
+ * @brief Declares the EventProcessor background worker used to poll the
+ *        SysMon driver and persist decoded kernel events.
+ */
+
+/**
+ * @brief Background worker polling the driver for raw events, decoding them
+ *        (Public.h structs) and persisting them through the event repository.
+ */
 class EventProcessor : public IEventProcessor
 {
 public:
+    /**
+     * @brief Constructs the event processor with its dependencies.
+     * @param connector Driver connector used to read raw events.
+     * @param repository Repository used to persist decoded events.
+     * @param dispatcher Dispatcher used to report errors.
+     */
     EventProcessor(
         std::shared_ptr<IDriverConnector> connector,
         std::shared_ptr<IEventRepository> repository,
         std::shared_ptr<IErrorDispatcher> dispatcher
     );
 
+    /** @brief Stops the worker thread if still running. */
     ~EventProcessor() override;
 
+    /** @brief Starts the polling thread. */
     void Start() noexcept override;
+
+    /** @brief Signals the polling thread to stop and joins it. */
     void Stop() noexcept override;
 
 private:
+    /** @brief Connector used to read raw events from the driver. */
     std::shared_ptr<IDriverConnector> _Connector;
+    /** @brief Repository used to persist decoded events. */
     std::shared_ptr<IEventRepository> _Repository;
+    /** @brief Dispatcher used to report processing errors. */
     std::shared_ptr<IErrorDispatcher> _Dispatcher;
+    /** @brief Thread running the polling loop. */
     std::thread                       _Worker;
+    /** @brief Flag controlling whether the worker loop keeps running. */
     std::atomic<bool>                 _Running = false;
 
+    /** @brief Polling loop: reads from the driver and hands buffers to ProcessBuffer(). */
     void WorkerLoop();
+
+    /**
+     * @brief Walks a raw driver buffer and converts each ItemHeader-based event to an EventRecord.
+     * @param buffer Raw buffer filled by the driver read.
+     * @param size Number of valid bytes in @p buffer.
+     */
     void ProcessBuffer(BYTE* buffer, DWORD size);
+
+    /**
+     * @brief Converts an NT device path (\\Device\\HarddiskVolumeX\\...) to its DOS drive form.
+     * @param path NT device path to convert.
+     * @return The DOS-style path, or @p path unchanged if it cannot be resolved.
+     */
     std::wstring GetDosNameFromNTName(PCWSTR path);
+
+    /**
+     * @brief UTF-16 to UTF-8 conversion helper.
+     * @param wstr Wide string to convert.
+     * @return The UTF-8 encoded equivalent of @p wstr.
+     */
     std::string WStringToString(const std::wstring& wstr);
 };

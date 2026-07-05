@@ -11,6 +11,13 @@
 
 #include <dbghelp.h>
 
+/**
+ * @file SysMonException.cpp
+ * @brief Implements SysMonException: ErrorRecord construction, stack trace
+ *        capture and diagnostic helpers.
+ */
+
+/** @brief Constructs the exception with its full reporting metadata. */
 SysMonException::SysMonException(
     const std::string& message, 
     const std::string& category, 
@@ -27,16 +34,19 @@ SysMonException::SysMonException(
 {
 }
 
+/** @brief Error category (e.g. "Storage", "Device"). */
 std::string_view SysMonException::Category() const noexcept
 {
     return _Category;
 }
 
+/** @brief Severity carried by the exception. */
 ErrorSeverity SysMonException::Severity() const noexcept
 {
     return _Severity;
 }
 
+/** @brief Builds a complete ErrorRecord (stack trace, user, memory usage included). */
 ErrorRecord SysMonException::ToRecord() const noexcept
 {
     LARGE_INTEGER ft;
@@ -69,6 +79,7 @@ ErrorRecord SysMonException::ToRecord() const noexcept
     return record;
 }
 
+/** @brief Captures the current call stack as readable text (DbgHelp). */
 std::string SysMonException::CaptureStackTrace() noexcept
 {
     HANDLE process = GetCurrentProcess();
@@ -104,6 +115,7 @@ std::string SysMonException::CaptureStackTrace() noexcept
     return oss.str();
 }
 
+/** @brief Returns the current Windows user name. */
 std::string SysMonException::CaptureUserId() noexcept
 {
     char username[256];
@@ -117,6 +129,7 @@ std::string SysMonException::CaptureUserId() noexcept
     return std::string(username);
 }
 
+/** @brief Returns the working-set size of the process, in KiB. */
 ULONG SysMonException::CaptureMemoryUsedKb() noexcept
 {
     PROCESS_MEMORY_COUNTERS pmc;
@@ -124,6 +137,7 @@ ULONG SysMonException::CaptureMemoryUsedKb() noexcept
     return static_cast<ULONG>(pmc.WorkingSetSize / 1024);
 }
 
+/** @brief Lazily initializes the DbgHelp symbol handler (once per process). */
 void SysMonException::SymbolInitialize() noexcept
 {
     if (!_IsInitialized)

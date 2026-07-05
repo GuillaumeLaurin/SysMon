@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(SysMon
-    VERSION 0.7.0
+    VERSION 1.0.0
     DESCRIPTION "Kernel-Mode System Monitoring with a client side"
     LANGUAGES C CXX
 )

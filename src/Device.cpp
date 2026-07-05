@@ -3,7 +3,18 @@
 #include "Device.h"
 #include "Queue.h"
 
-VOID 
+/**
+ * @file Device.cpp
+ * @brief Implements the process/thread/image notification callbacks and the
+ *        device creation/deletion/dispatch routines declared in Device.h.
+ */
+
+/**
+ * @brief Captures process creation/exit events and pushes them into the
+ *        global event list. New processes are also tracked so a thread
+ *        created right after by the parent is not flagged as remote.
+ */
+VOID
 OnProcessNotify(
     _In_        PEPROCESS Process,
     _In_        HANDLE ProcessId, 
@@ -18,7 +29,7 @@ OnProcessNotify(
 
             if (process == nullptr)
             {
-                LOG_ERROR("failed allocation\n");
+                LOG_ERROR("failed allocation");
                 break;
             }
 
@@ -26,12 +37,12 @@ OnProcessNotify(
 
             if (!g_State.AddNewProcess(&process->Entry))
             {
-                LOG_WARN("New process created, no room to store\n");
+                LOG_WARN("New process created, no room to store");
                 // we need to delete reference to memory 
                 SAFE_FREE(process);
             } else 
             {   
-                LOG_INFO("New process added: %u\n", process->Data.ProcessId);
+                LOG_INFO("New process added: %u", process->Data.ProcessId);
             }
         } while (0);
         
@@ -48,7 +59,7 @@ OnProcessNotify(
         
         if (info == nullptr)
         {
-            LOG_ERROR("failed allocation\n");
+            LOG_ERROR("failed allocation");
             return;
         }
 
@@ -57,7 +68,8 @@ OnProcessNotify(
         item.Type = ItemType::ProcessCreate;
         item.Size = sizeof(ProcessCreateInfo) + commandLineSize;
         item.ProcessId = HandleToUlong(ProcessId);
-        item.ParentProcessId = HandleToULong(
+        item.ParentProcessId = HandleToULong(CreateInfo->ParentProcessId);
+        item.CreatingProcessId = HandleToULong(
             CreateInfo->CreatingThreadId.UniqueProcess);
         item.CreatingThreadId = HandleToULong(
             CreateInfo->CreatingThreadId.UniqueThread);
@@ -80,7 +92,7 @@ OnProcessNotify(
         
         if (info == nullptr)
         {
-            LOG_ERROR("failed allocation\n");
+            LOG_ERROR("failed allocation");
             return;
         }
 
@@ -95,7 +107,12 @@ OnProcessNotify(
     }
 }
 
-VOID 
+/**
+ * @brief Captures thread creation/exit events. A creation occurring in a
+ *        process different from the caller's (and not tracked as a brand-new
+ *        process) is additionally reported as a RemoteThread event.
+ */
+VOID
 OnThreadNotify(
     _In_ HANDLE  ProcessId,
     _In_ HANDLE  ThreadId,
@@ -124,7 +141,7 @@ OnThreadNotify(
 
                     if (info == nullptr)
                     {
-                        LOG_ERROR("failed allocation\n");
+                        LOG_ERROR("failed allocation");
                         break;
                     }
 
@@ -137,7 +154,7 @@ OnThreadNotify(
                     item.ProcessId = HandleToULong(ProcessId);
                     item.ThreadId = HandleToULong(ThreadId);
 
-                    LOG_INFO("Remote thread detected. (PID: %u, TID: %u) -> (PID: %u, TID: %u)\n",
+                    LOG_INFO("Remote thread detected. (PID: %u, TID: %u) -> (PID: %u, TID: %u)",
                         item.CreatorProcessId, item.CreatorThreadId,
                         item.ProcessId, item.ThreadId);
                     
@@ -154,7 +171,7 @@ OnThreadNotify(
     
     if (info == nullptr)
     {
-        LOG_ERROR("failed allocation\n");
+        LOG_ERROR("failed allocation");
         return;
     }
     
@@ -168,6 +185,7 @@ OnThreadNotify(
     if (!Create)
     {
         PETHREAD thread;
+        item.ExitCode = STATUS_SUCCESS;
 
         if (NT_SUCCESS(PsLookupThreadByThreadId(ThreadId, &thread)))
         {
@@ -179,6 +197,10 @@ OnThreadNotify(
     g_State.AddItem(&info->Entry);
 }
 
+/**
+ * @brief Captures image-load events (EXE/DLL mappings) with the normalized
+ *        file path when available. System images (null ProcessId) are ignored.
+ */
 VOID OnImageNotify(
     _In_opt_ PUNICODE_STRING FullImageName,
     _In_ HANDLE              ProcessId,
@@ -196,7 +218,7 @@ VOID OnImageNotify(
     
     if (info == nullptr)
     {
-        LOG_ERROR("failed allocation\n");
+        LOG_ERROR("failed allocation");
         return;
     }
 
@@ -218,15 +240,21 @@ VOID OnImageNotify(
         nullptr, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
         &nameInfo)))
         {
-            // copy the file path
-            wcscpy_s(item.ImageFileName, nameInfo->Name.Buffer);
+            // UNICODE_STRING buffers are not null-terminated: bounded copy
+            ULONG chars = min((ULONG)(nameInfo->Name.Length / sizeof(WCHAR)),
+                (ULONG)MaxImageFileSize);
+            memcpy(item.ImageFileName, nameInfo->Name.Buffer, chars * sizeof(WCHAR));
+            item.ImageFileName[chars] = 0;
             FltReleaseFileNameInformation(nameInfo);
         }
     }
 
     if (item.ImageFileName[0] == 0 && FullImageName)
     {
-        wcscpy_s(item.ImageFileName, FullImageName->Buffer);
+        ULONG chars = min((ULONG)(FullImageName->Length / sizeof(WCHAR)),
+            (ULONG)MaxImageFileSize);
+        memcpy(item.ImageFileName, FullImageName->Buffer, chars * sizeof(WCHAR));
+        item.ImageFileName[chars] = 0;
     }
 
     g_State.AddHeadItem(&info->Entry);
@@ -326,10 +354,12 @@ DeviceCreate(
 )
 {
     NTSTATUS        status;
-    PDEVICE_OBJECT  deviceObject    = NULL;
+    PDEVICE_OBJECT  deviceObject          = NULL;
     UNICODE_STRING  deviceName;
     UNICODE_STRING  symLink;
-    BOOLEAN         symLinkCreated  = FALSE;
+    BOOLEAN         symLinkCreated        = FALSE;
+    BOOLEAN         processNotifySet      = FALSE;
+    BOOLEAN         threadNotifySet       = FALSE;
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
@@ -360,16 +390,26 @@ DeviceCreate(
     status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
     NT_CHECK_GOTO(status, Cleanup);
 
+    processNotifySet = TRUE;
+
     status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
     NT_CHECK_GOTO(status, Cleanup);
 
+    threadNotifySet = TRUE;
+
     status = PsSetLoadImageNotifyRoutine(OnImageNotify);
-    NT_CHECK_RETURN(status);
-    
+    NT_CHECK_GOTO(status, Cleanup);
+
     LOG_INFO("DeviceCreated, success (%wZ)", &deviceName);
     return STATUS_SUCCESS;
 
 Cleanup:
+    if (threadNotifySet) {
+        PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+    }
+    if (processNotifySet) {
+        PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
+    }
     if (symLinkCreated) {
         IoDeleteSymbolicLink(&symLink);
     }
@@ -399,10 +439,13 @@ DeviceDelete(
     }
 }
 
-NTSTATUS 
+/**
+ * @brief Completes an IRP with the given status and information count.
+ */
+NTSTATUS
 CompleteRequest(
-    _Inout_ PIRP        Irp, 
-    _In_    NTSTATUS    status, 
+    _Inout_ PIRP        Irp,
+    _In_    NTSTATUS    status,
     _In_    ULONG_PTR   info) 
 {
     Irp->IoStatus.Status = status;
@@ -411,6 +454,9 @@ CompleteRequest(
     return status;
 }
 
+/**
+ * @brief IRP_MJ_CREATE handler (WDM) — always succeeds, no per-open state to set up.
+ */
 NTSTATUS
 DispatchCreate(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -422,6 +468,9 @@ DispatchCreate(
     return CompleteRequest(Irp);
 }
 
+/**
+ * @brief IRP_MJ_CLOSE handler (WDM).
+ */
 NTSTATUS
 DispatchClose(
     _In_    PDEVICE_OBJECT DeviceObject,
@@ -433,11 +482,14 @@ DispatchClose(
     return CompleteRequest(Irp);
 }
 
+/**
+ * @brief IRP_MJ_CLEANUP handler (WDM).
+ */
 NTSTATUS
 DispatchCleanup(
     _In_    PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP           Irp 
-) 
+    _Inout_ PIRP           Irp
+)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     LOG_TRACE("DispatchCleanup");
