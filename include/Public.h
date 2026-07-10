@@ -23,7 +23,8 @@ enum class ItemType : short
     ThreadCreate,
     ThreadExit,
     ImageLoad,
-    RemoteThread
+    RemoteThread,
+    RegistrySetValue,
 };
 
 /**
@@ -119,3 +120,15 @@ struct FullItem
 };
 
 using ProcessItem = FullItem<Process>;
+
+struct RegistrySetValueInfo : ItemHeader
+{
+    ULONG  ProcessId;
+    ULONG  ThreadId;
+    USHORT KeyNameOffset;   /**< from beginning of structure */
+    USHORT ValueNameOffset; /**< from beginning of structure */
+    ULONG  DataType;        /**< REG_xxx */
+    ULONG  DataSize;        /**< actual size */
+    USHORT DataOffset;
+    USHORT ProvidedDataSize;
+};

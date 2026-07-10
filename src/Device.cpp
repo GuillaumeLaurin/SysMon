@@ -260,6 +260,96 @@ VOID OnImageNotify(
     g_State.AddHeadItem(&info->Entry);
 }
 
+/**
+ * 
+ */
+NTSTATUS
+OnRegistryNotify(
+    _In_ PVOID context,
+    _In_ PVOID arg1,
+    _In_ PVOID arg2
+)
+{
+    UNREFERENCED_PARAMETER(context);
+
+    switch ((REG_NOTIFY_CLASS)(ULONG_PTR)arg1)
+    {
+        case RegNtPostSetValueKey:
+        {
+            auto args = (REG_POST_OPERATION_INFORMATION*)arg2;
+
+            if (!NT_SUCCESS(args->Status))
+                break;
+            
+            static const WCHAR machine[] = L"\\REGISTRY\\MACHINE\\";
+            PCUNICODE_STRING name;
+            LARGE_INTEGER cookie = g_State.GetCookie();
+
+            if (NT_SUCCESS(CmCallbackGetKeyObjectIDEx(&cookie,
+                    args->Object, nullptr, &name, 0)))
+            {
+                if (wcsncmp(name->Buffer, machine, ARRAY_SIZE(machine) - 1) == 0)
+                {
+                    auto preInfo = (REG_SET_VALUE_KEY_INFORMATION*)args->PreInformation;
+
+                    NT_ASSERT(preInfo);
+
+                    USHORT size = sizeof(RegistrySetValueInfo);
+                    USHORT keyNameLen = name->Length + sizeof(WCHAR);
+                    USHORT valueNameLen = preInfo->ValueName->Length + sizeof(WCHAR);\
+
+                    // restrict copied data to 256 bytes
+                    USHORT valueSize = (USHORT)min(256, preInfo->DataSize);
+                    size += keyNameLen + valueNameLen + valueSize;
+
+                    auto info = (FullItem<RegistrySetValueInfo>*)ALLOC_PAGED(size + sizeof(LIST_ENTRY));
+
+                    if (info)
+                    {
+                        auto& data = info->Data;
+                        KeQuerySystemTimePrecise(&data.Time);
+                        data.Type = ItemType::RegistrySetValue;
+                        data.Size = size;
+                        data.DataType = preInfo->Type;
+                        data.ProcessId = HandleToULong(PsGetCurrentProcessId());
+                        data.ThreadId = HandleToULong(PsGetCurrentThreadId());
+                        data.ProvidedDataSize = valueSize;
+                        data.DataSize = preInfo->DataSize;
+
+                        USHORT offset = sizeof(data);
+                        data.KeyNameOffset = offset;
+                        wcsncpy_s(
+                            (PWSTR)((PUCHAR)&data + offset),
+                            keyNameLen / sizeof(WCHAR), name->Buffer,
+                            name->Length / sizeof(WCHAR)
+                        );
+                        offset += keyNameLen;
+                        data.ValueNameOffset = offset;
+                        wcsncpy_s(
+                            (PWSTR)((PUCHAR)&data + offset),
+                            valueNameLen / sizeof(WCHAR), preInfo->ValueName->Buffer,
+                            preInfo->ValueName->Length / sizeof(WCHAR)
+                        );
+                        offset += valueNameLen;
+                        data.DataOffset = offset;
+                        memcpy((PUCHAR)&data + offset, preInfo->Data, valueSize);
+
+                        g_State.AddItem(&info->Entry);
+
+                        
+                    }
+                } else {
+                    LOG_ERROR("Failed to allocate memory for registry set value\n");
+                }
+            }
+            CmCallbackReleaseKeyObjectIDEx(name);
+        }
+        break;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 #ifdef USE_KMDF
 
 /**
@@ -279,6 +369,10 @@ DeviceCreate(
     PDEVICE_CONTEXT         deviceContext;
     UNICODE_STRING          deviceName;
     UNICODE_STRING          symLink;
+    UNICODE_STRING          altitude = RTL_CONSTANT_STRING(L"7657.124");
+    BOOLEAN                 processNotifySet = FALSE;
+    BOOLEAN                 threadNotifySet  = FALSE;
+    BOOLEAN                 imageNotifySet   = FALSE;
 
     LOG_TRACE("DeviceCreate (KMDF)");
 
@@ -310,16 +404,39 @@ DeviceCreate(
     NT_CHECK_RETURN(status);
 
     status = PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, FALSE);
-    NT_CHECK_RETURN(status);
+    NT_CHECK_GOTO(status, Cleanup);
+    processNotifySet = TRUE;
 
     status = PsSetCreateThreadNotifyRoutine(OnThreadNotify);
-    NT_CHECK_RETURN(status);
+    NT_CHECK_GOTO(status, Cleanup);
+    threadNotifySet = TRUE;
 
     status = PsSetLoadImageNotifyRoutine(OnImageNotify);
-    NT_CHECK_RETURN(status);
+    NT_CHECK_GOTO(status, Cleanup);
+    imageNotifySet = TRUE;
+
+    status = g_State.RegisterCallback(
+        OnRegistryNotify,
+        &altitude,
+        WdfDriverWdmGetDriverObject(WdfGetDriver()),
+        nullptr,
+        nullptr);
+    NT_CHECK_GOTO(status, Cleanup);
 
     LOG_INFO("DeviceCreate, device created successfully");
     return STATUS_SUCCESS;
+
+Cleanup:
+    if (imageNotifySet) {
+        PsRemoveLoadImageNotifyRoutine(OnImageNotify);
+    }
+    if (threadNotifySet) {
+        PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
+    }
+    if (processNotifySet) {
+        PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
+    }
+    return status;
 }
 
 /**
@@ -357,6 +474,7 @@ DeviceCreate(
     PDEVICE_OBJECT  deviceObject          = NULL;
     UNICODE_STRING  deviceName;
     UNICODE_STRING  symLink;
+    UNICODE_STRING  altitude              = RTL_CONSTANT_STRING(L"7657.124");
     BOOLEAN         symLinkCreated        = FALSE;
     BOOLEAN         processNotifySet      = FALSE;
     BOOLEAN         threadNotifySet       = FALSE;
@@ -398,6 +516,9 @@ DeviceCreate(
     threadNotifySet = TRUE;
 
     status = PsSetLoadImageNotifyRoutine(OnImageNotify);
+    NT_CHECK_GOTO(status, Cleanup);
+
+    status = g_State.RegisterCallback(OnRegistryNotify, &altitude, DriverObject, nullptr, nullptr);
     NT_CHECK_GOTO(status, Cleanup);
 
     LOG_INFO("DeviceCreated, success (%wZ)", &deviceName);

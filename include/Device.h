@@ -54,6 +54,12 @@ VOID OnImageNotify(
     _In_ PIMAGE_INFO         ImageInfo
 );
 
+NTSTATUS OnRegistryNotify(
+    _In_ PVOID context,
+    _In_ PVOID arg1,
+    _In_ PVOID arg2
+);
+
 #ifdef USE_KMDF
 
 EVT_WDF_DRIVER_DEVICE_ADD EvtDriverDeviceAdd;

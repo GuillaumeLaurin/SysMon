@@ -146,6 +146,43 @@ VOID Globals::ClearNewProcesses()
 }
 
 /**
+ * 
+ */
+NTSTATUS Globals::RegisterCallback(
+    _In_       PEX_CALLBACK_FUNCTION function,
+    _In_       PCUNICODE_STRING      altitude,
+    _In_       PVOID                 driver,
+    _In_opt_   PVOID                 context,
+    _Reserved_ PVOID                 reserved 
+)
+{
+    return CmRegisterCallbackEx(
+        function,
+        altitude,
+        driver,
+        context,
+        &_Cookie,
+        reserved
+    );
+}
+
+/**
+ * 
+ */
+LARGE_INTEGER Globals::GetCookie() CONST
+{
+    return _Cookie;
+}
+
+/**
+ * 
+ */
+VOID Globals::UnRegisterCallback()
+{
+    CmUnRegisterCallback(_Cookie);
+}
+
+/**
  * @brief The single global instance holding all driver state.
  */
 Globals g_State;

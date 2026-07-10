@@ -78,6 +78,32 @@ struct Globals
      */
     VOID ClearNewProcesses();
 
+    /**
+     * @brief
+     * @param function
+     * @param altitude
+     * @param driver
+     * @param context
+     * @param reserved
+     */
+    NTSTATUS RegisterCallback(
+        _In_       PEX_CALLBACK_FUNCTION function,
+        _In_       PCUNICODE_STRING      altitude,
+        _In_       PVOID                 driver,
+        _In_opt_   PVOID                 context,
+        _Reserved_ PVOID                 reserved
+    );
+
+    /**
+     * 
+     */
+    LARGE_INTEGER GetCookie() CONST;
+
+    /**
+     * 
+     */
+    VOID UnRegisterCallback(); 
+
 private:
     // Event items: Process, Thread, Image & RemoteThread
     LIST_ENTRY _ItemsHead;
@@ -89,4 +115,6 @@ private:
     ULONG             _NewProcessesCount;
     ULONG             _NewProcessesMaxCount;
     ExecutiveResource _NewProcessesLock;
+    // 
+    LARGE_INTEGER     _Cookie;
 };
