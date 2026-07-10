@@ -145,9 +145,7 @@ VOID Globals::ClearNewProcesses()
     }
 }
 
-/**
- * 
- */
+/** @brief Registers a registry callback via CmRegisterCallbackEx and stores the returned cookie. */
 NTSTATUS Globals::RegisterCallback(
     _In_       PEX_CALLBACK_FUNCTION function,
     _In_       PCUNICODE_STRING      altitude,
@@ -166,17 +164,13 @@ NTSTATUS Globals::RegisterCallback(
     );
 }
 
-/**
- * 
- */
+/** @brief Returns the cookie identifying the registry callback registration. */
 LARGE_INTEGER Globals::GetCookie() CONST
 {
     return _Cookie;
 }
 
-/**
- * 
- */
+/** @brief Unregisters the registry callback registered by RegisterCallback(). */
 VOID Globals::UnRegisterCallback()
 {
     CmUnRegisterCallback(_Cookie);

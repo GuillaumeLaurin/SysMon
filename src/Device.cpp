@@ -261,7 +261,16 @@ VOID OnImageNotify(
 }
 
 /**
- * 
+ * @brief Registry callback (CmRegisterCallbackEx). On RegNtPostSetValueKey,
+ *        resolves the key path via CmCallbackGetKeyObjectIDEx and, when the
+ *        write targets HKLM and succeeded, queues a RegistrySetValueInfo
+ *        event carrying the key name, value name, REG_* type and up to 256
+ *        bytes of the written data.
+ *
+ * @param context Registration context (unused)
+ * @param arg1    REG_NOTIFY_CLASS of the operation
+ * @param arg2    Class-specific data (REG_POST_OPERATION_INFORMATION here)
+ * @return Always STATUS_SUCCESS (the operation is never blocked)
  */
 NTSTATUS
 OnRegistryNotify(

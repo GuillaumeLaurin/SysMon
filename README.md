@@ -1,6 +1,6 @@
 # SysMon
 
-A Windows kernel driver (WDM/KMDF) that captures system events — process creation/exit, thread creation/exit, thread injection, and image loads — and streams them to a user-mode client application in real time. The client is a full ImGui/DirectX 11 desktop application with SQLite-backed persistence, structured logging, and a dedicated error-reporting pipeline.
+A Windows kernel driver (WDM/KMDF) that captures system events — process creation/exit, thread creation/exit, thread injection, image loads, and registry value writes — and streams them to a user-mode client application in real time. The client is a full ImGui/DirectX 11 desktop application with SQLite-backed persistence, structured logging, and a dedicated error-reporting pipeline.
 
 ## Architecture
 
@@ -11,6 +11,7 @@ A Windows kernel driver (WDM/KMDF) that captures system events — process creat
 │  PsSetCreateProcessNotifyRoutineEx ──►  OnProcessNotify()                 │
 │  PsSetCreateThreadNotifyRoutine    ──►  OnThreadNotify()                  │
 │  PsSetLoadImageNotifyRoutine       ──►  OnImageNotify()                   │
+│  CmRegisterCallbackEx              ──►  OnRegistryNotify()                │
 │                      │                   │      │   SysMonClient.exe      │
 │                      ▼                   │      │        │                │
 │              FullItem<T> allocated       │      │  DriverConnector        │
@@ -37,6 +38,7 @@ Each event callback allocates a `FullItem<T>` from the paged pool, fills the typ
 | Thread exited | `ThreadExitInfo` | thread ID, owning process ID, exit code |
 | Image loaded | `ImageLoadInfo` | PID, image size, load address, image file path |
 | Remote thread created | `RemoteThread` | creator PID/TID, target PID/TID — flags cross-process thread creation (code injection) |
+| Registry value written | `RegistrySetValueInfo` | PID/TID, key path, value name, `REG_*` type, data size, first 256 bytes of the written data |
 
 All structs inherit `ItemHeader` which carries the event type tag, size, and a `LARGE_INTEGER` timestamp.
 
@@ -68,7 +70,7 @@ The client (`SysMonClient.exe`) is a windowed ImGui/DirectX 11 desktop applicati
 | **Core** | `DriverConnector`, `DriverService`, `EventProcessor` | Opens `\\.\sysmon`, installs/starts the driver, polls and decodes raw events on a background thread |
 | **Storage** | `Database`, `EventRepository`, `ConfigRepository` | SQLite-backed persistence for captured events and user settings |
 | **GUI** | `Win32Window`, `DX11Renderer`, `UIRenderer`, `Router`, `PageManager` | Window/swapchain setup, per-frame render loop, page navigation |
-| **Pages** | `Dashboard`, `Processes`, `Threads`, `Images`, `EventTablePage`, `Settings` | One `IPage` implementation per screen, listed in the sidebar |
+| **Pages** | `Dashboard`, `Processes`, `Threads`, `Images`, `Registry`, `EventTablePage`, `Settings` | One `IPage` implementation per screen, listed in the sidebar |
 | **Components** | `Sidebar`, `StatCard`, `EventTable`, `FilterBar`, `AlertBanner` | Reusable `IComponent` building blocks shared across pages |
 | **Logging** | `Logger` (spdlog) | Structured application logs, separate from kernel `DbgPrint` |
 | **Reporter** | `ErrorDispatcher`, `ErrorQueue`, filters (`Severity`/`Category`/`RateLimit`), sinks (`Console`/`File`), `JsonFormatter`, `DumpProvider` | Centralized, thread-safe error pipeline: every `SysMonException` is queued, filtered, formatted as JSON and dispatched to sinks; crash dumps are written per fingerprint |
@@ -279,7 +281,7 @@ build\release\SysMonClient.exe
 
 - starts the `SysMon` service through `DriverService` (no-op if already running),
 - spawns the `EventProcessor` background thread that polls the driver and persists decoded events to a local SQLite database,
-- opens the ImGui/DirectX 11 window with the **Dashboard**, **Processes**, **Threads**, **Images** and **Settings** pages (see [Screenshots](#screenshots)).
+- opens the ImGui/DirectX 11 window with the **Dashboard**, **Processes**, **Threads**, **Images**, **Registry** and **Settings** pages (see [Screenshots](#screenshots)).
 
 ### 5. Uninstall
 
@@ -394,9 +396,36 @@ The GUI client logs independently of the driver through `Logger` (spdlog, consol
 
 ![Images](assets/images.png)
 
+### Registry
+
+![Registry](assets/registry.png)
+
 ### Settings
 
 ![Settings](assets/settings.png)
+
+---
+
+## Registry monitoring
+
+The driver registers a registry callback through `CmRegisterCallbackEx` (altitude `7657.124`) at device creation, and unregisters it on unload. The callback (`OnRegistryNotify` in `src/Device.cpp`) reacts to the **post** notification of value writes:
+
+- Only `RegNtPostSetValueKey` operations that **succeeded** are considered — failed writes are ignored.
+- The full key path is resolved with `CmCallbackGetKeyObjectIDEx`; only writes under **`\REGISTRY\MACHINE`** (HKLM) are captured to keep the volume manageable.
+- Each event is packed into a variable-length `RegistrySetValueInfo` (see `include/Public.h`): the fixed part carries the PID/TID, the `REG_*` data type and the real data size, followed inline by the null-terminated key name, the null-terminated value name and the raw data itself. The copied data is **capped at 256 bytes** (`ProvidedDataSize`), the actual size remains available through `DataSize`.
+
+On the client side, `EventProcessor::RegistryValue()` decodes the payload according to its type before persisting it to SQLite:
+
+| `REG_*` type | Rendered as |
+|--------------|-------------|
+| `REG_SZ`, `REG_EXPAND_SZ`, `REG_LINK` | UTF-8 string |
+| `REG_MULTI_SZ` | Strings joined with `;` |
+| `REG_DWORD`, `REG_DWORD_BIG_ENDIAN` | `0x%08X (decimal)` — big-endian values are byte-swapped |
+| `REG_QWORD` | `0x%016llX (decimal)` |
+| `REG_NONE` | `(none)` |
+| `REG_BINARY`, `REG_RESOURCE_*`, unknown | Space-separated hex dump |
+
+The stored `data` column has the form `HKLM\...\Key\ValueName | REG_SZ | Size: 24 | Data: ...` and is displayed in the **Registry** page of the client, with the usual filter bar and auto-refresh.
 
 ---
 
@@ -408,5 +437,7 @@ The GUI client logs independently of the driver through `Logger` (spdlog, consol
 - [PsSetCreateProcessNotifyRoutineEx](https://learn.microsoft.com/windows-hardware/drivers/ddi/ntddk/nf-ntddk-pssetcreateprocessnotifyroutineex)
 - [PsSetCreateThreadNotifyRoutine](https://learn.microsoft.com/windows-hardware/drivers/ddi/ntddk/nf-ntddk-pssetcreatethreadnotifyroutine)
 - [PsSetLoadImageNotifyRoutine](https://learn.microsoft.com/windows-hardware/drivers/ddi/ntddk/nf-ntddk-pssetloadimagenotifyroutine)
+- [CmRegisterCallbackEx](https://learn.microsoft.com/windows-hardware/drivers/ddi/wdm/nf-wdm-cmregistercallbackex)
+- [Filtering Registry Calls](https://learn.microsoft.com/windows-hardware/drivers/kernel/filtering-registry-calls)
 - [Driver Verifier](https://learn.microsoft.com/windows-hardware/drivers/devtest/driver-verifier)
 - [Static Driver Verifier](https://learn.microsoft.com/windows-hardware/drivers/devtest/static-driver-verifier)
