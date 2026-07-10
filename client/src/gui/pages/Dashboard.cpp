@@ -6,7 +6,8 @@
 #include <cstddef>
 
 constexpr const char* KNOWN_TYPES[] = {
-    "ProcessCreate", "ProcessExit", "ThreadCreate", "ThreadExit", "ImageLoad", "RemoteThread"
+    "ProcessCreate", "ProcessExit", "ThreadCreate", "ThreadExit", "ImageLoad", "RemoteThread",
+    "RegistrySetValue"
 };
 
 constexpr auto REFRESH_INTERVAL = std::chrono::milliseconds(500);
@@ -20,6 +21,9 @@ namespace
 
         if (type == "ImageLoad")
             return ImVec4(0.55f, 0.49f, 0.96f, 1.0f);
+
+        if (type == "RegistrySetValue")
+            return ImVec4(0.96f, 0.62f, 0.26f, 1.0f);
 
         return ImVec4(0.25f, 0.80f, 0.49f, 1.0f);
     }

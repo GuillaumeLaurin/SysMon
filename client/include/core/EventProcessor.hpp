@@ -18,6 +18,8 @@
  *        SysMon driver and persist decoded kernel events.
  */
 
+struct RegistrySetValueInfo;
+
 /**
  * @brief Background worker polling the driver for raw events, decoding them
  *        (Public.h structs) and persisting them through the event repository.
@@ -81,4 +83,26 @@ private:
      * @return The UTF-8 encoded equivalent of @p wstr.
      */
     std::string WStringToString(const std::wstring& wstr);
+
+    /**
+     * @brief Decodes the value payload of a RegistrySetValue event according to its REG_* type.
+     * @param info Registry event whose trailing data is decoded (at most ProvidedDataSize bytes).
+     * @return Human-readable representation of the value (hex dump for binary types).
+     */
+    std::wstring RegistryValue(const RegistrySetValueInfo* info);
+
+    /**
+     * @brief Maps a REG_* data type constant to its symbolic name.
+     * @param type REG_* constant reported by the driver.
+     * @return The constant's name (e.g. L"REG_SZ"), or L"REG_UNKNOWN(n)".
+     */
+    std::wstring RegistryTypeName(ULONG type);
+
+    /**
+     * @brief Formats a raw byte buffer as a space-separated hex string.
+     * @param buffer Bytes to format.
+     * @param size Number of bytes in @p buffer.
+     * @return The hex representation of the buffer.
+     */
+    std::wstring ToBinary(const BYTE* buffer, DWORD size);
 };

@@ -68,6 +68,7 @@ add_executable(${CLIENT_NAME} WIN32
     src/gui/pages/Processes.cpp
     src/gui/pages/Threads.cpp
     src/gui/pages/Images.cpp
+    src/gui/pages/Registry.cpp
     src/gui/pages/Settings.cpp
 )
 

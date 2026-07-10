@@ -4,6 +4,11 @@
 
 #include <objbase.h>
 
+#include <intrin.h>
+
+#include <sstream>
+#include <iomanip>
+
 #include <unordered_map>
 
 /**
@@ -150,6 +155,24 @@ void EventProcessor::ProcessBuffer(BYTE* buffer, DWORD size)
                               std::to_string(info->CreatorThreadId);
                 break;
             }
+            case ItemType::RegistrySetValue:
+            {
+                auto info = (RegistrySetValueInfo*)buffer;
+                record.Type = "RegistrySetValue";
+                record.Pid = info->ProcessId;
+                record.Tid = info->ThreadId;
+
+                auto keyName   = (PCWSTR)((PBYTE)info + info->KeyNameOffset);
+                auto valueName = (PCWSTR)((PBYTE)info + info->ValueNameOffset);
+
+                std::wstring data = std::wstring(keyName) + L"\\" + valueName +
+                    L" | " + RegistryTypeName(info->DataType) +
+                    L" | Size: " + std::to_wstring(info->DataSize) +
+                    L" | Data: " + RegistryValue(info);
+
+                record.Data = WStringToString(data);
+                break;
+            }
         }
 
         _Repository->Insert(record);
@@ -221,4 +244,126 @@ std::string EventProcessor::WStringToString(const std::wstring& wstr)
     auto result = std::string(size - 1, '\0');
     WideCharToMultiByte(CP_UTF8, 0, wstr.data(), -1, result.data(), size, nullptr, nullptr);
     return result;
+}
+
+/** @brief Decodes the value payload of a RegistrySetValue event according to its REG_* type. */
+std::wstring EventProcessor::RegistryValue(const RegistrySetValueInfo* info)
+{
+    auto data = (const BYTE*)info + info->DataOffset;
+    // The driver caps the copied payload at ProvidedDataSize bytes (DataSize is the real size).
+    DWORD size = info->ProvidedDataSize;
+
+    switch (info->DataType)
+    {
+        case REG_NONE:
+        {
+            return L"(none)";
+        }
+        case REG_SZ:
+        case REG_EXPAND_SZ:
+        case REG_LINK:
+        {
+            std::wstring value((PCWSTR)data, size / sizeof(WCHAR));
+
+            if (auto pos = value.find(L'\0'); pos != std::wstring::npos)
+                value.resize(pos);
+
+            return value;
+        }
+        case REG_MULTI_SZ:
+        {
+            std::wstring value((PCWSTR)data, size / sizeof(WCHAR));
+
+            while (!value.empty() && value.back() == L'\0')
+                value.pop_back();
+
+            for (auto& c : value)
+            {
+                if (c == L'\0')
+                    c = L';';
+            }
+
+            return value;
+        }
+        case REG_DWORD:
+        case REG_DWORD_BIG_ENDIAN:
+        {
+            if (size < sizeof(DWORD))
+                break;
+
+            DWORD value = *(const DWORD*)data;
+
+            if (info->DataType == REG_DWORD_BIG_ENDIAN)
+                value = _byteswap_ulong(value);
+
+            std::wstringstream ss;
+            ss << L"0x" << std::hex << std::uppercase << std::setfill(L'0')
+               << std::setw(8) << value
+               << L" (" << std::dec << value << L")";
+
+            return ss.str();
+        }
+        case REG_QWORD:
+        {
+            if (size < sizeof(ULONGLONG))
+                break;
+
+            ULONGLONG value = *(const ULONGLONG*)data;
+
+            std::wstringstream ss;
+            ss << L"0x" << std::hex << std::uppercase << std::setfill(L'0')
+               << std::setw(16) << value
+               << L" (" << std::dec << value << L")";
+
+            return ss.str();
+        }
+        case REG_BINARY:
+        case REG_RESOURCE_LIST:
+        case REG_FULL_RESOURCE_DESCRIPTOR:
+        case REG_RESOURCE_REQUIREMENTS_LIST:
+        default:
+        {
+            break;
+        }
+    }
+
+    return ToBinary(data, size);
+}
+
+/** @brief Maps a REG_* data type constant to its symbolic name. */
+std::wstring EventProcessor::RegistryTypeName(ULONG type)
+{
+    switch (type)
+    {
+        case REG_NONE:                       return L"REG_NONE";
+        case REG_SZ:                         return L"REG_SZ";
+        case REG_EXPAND_SZ:                  return L"REG_EXPAND_SZ";
+        case REG_BINARY:                     return L"REG_BINARY";
+        case REG_DWORD:                      return L"REG_DWORD";
+        case REG_DWORD_BIG_ENDIAN:           return L"REG_DWORD_BIG_ENDIAN";
+        case REG_LINK:                       return L"REG_LINK";
+        case REG_MULTI_SZ:                   return L"REG_MULTI_SZ";
+        case REG_RESOURCE_LIST:              return L"REG_RESOURCE_LIST";
+        case REG_FULL_RESOURCE_DESCRIPTOR:   return L"REG_FULL_RESOURCE_DESCRIPTOR";
+        case REG_RESOURCE_REQUIREMENTS_LIST: return L"REG_RESOURCE_REQUIREMENTS_LIST";
+        case REG_QWORD:                      return L"REG_QWORD";
+        default:                             return L"REG_UNKNOWN(" + std::to_wstring(type) + L")";
+    }
+}
+
+/** @brief Formats a raw byte buffer as a space-separated hex string. */
+std::wstring EventProcessor::ToBinary(const BYTE* buffer, DWORD size)
+{
+    std::wstringstream ss;
+    ss << std::hex << std::uppercase << std::setfill(L'0');
+
+    for (DWORD i = 0; i < size; i++)
+    {
+        if (i > 0)
+            ss << L' ';
+
+        ss << std::setw(2) << static_cast<unsigned int>(buffer[i]);
+    }
+
+    return ss.str();
 }
