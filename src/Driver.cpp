@@ -104,6 +104,8 @@ EvtDriverUnload(
 
     g_State.ClearNewProcesses();
 
+    g_State.UnRegisterCallback();
+
     g_State.Destroy();
 }
 
@@ -169,6 +171,8 @@ DriverUnload(
     }
     
     g_State.ClearNewProcesses();
+
+    g_State.UnRegisterCallback();
 
     g_State.Destroy();
     DeviceDelete(DriverObject->DeviceObject);

@@ -23,7 +23,8 @@ enum class ItemType : short
     ThreadCreate,
     ThreadExit,
     ImageLoad,
-    RemoteThread
+    RemoteThread,
+    RegistrySetValue,
 };
 
 /**
@@ -119,3 +120,21 @@ struct FullItem
 };
 
 using ProcessItem = FullItem<Process>;
+
+/**
+ * @brief Emitted when a registry value is written (RegNtPostSetValueKey) under
+ *        HKLM. Variable-length: the null-terminated key name, null-terminated
+ *        value name and raw data are stored inline after the fixed part, at
+ *        the offsets below.
+ */
+struct RegistrySetValueInfo : ItemHeader
+{
+    ULONG  ProcessId;        /**< ID of the process writing the value */
+    ULONG  ThreadId;         /**< ID of the thread writing the value */
+    USHORT KeyNameOffset;    /**< Offset of the key name, from the beginning of the structure */
+    USHORT ValueNameOffset;  /**< Offset of the value name, from the beginning of the structure */
+    ULONG  DataType;         /**< Value type (REG_SZ, REG_DWORD, REG_BINARY, ...) */
+    ULONG  DataSize;         /**< Actual size of the written data, in bytes */
+    USHORT DataOffset;       /**< Offset of the copied data, from the beginning of the structure */
+    USHORT ProvidedDataSize; /**< Number of data bytes copied inline (capped at 256) */
+};

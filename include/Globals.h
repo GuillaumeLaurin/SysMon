@@ -78,6 +78,36 @@ struct Globals
      */
     VOID ClearNewProcesses();
 
+    /**
+     * @brief Registers a registry callback via CmRegisterCallbackEx and
+     *        stores the returned cookie for later use/unregistration.
+     *
+     * @param function Callback invoked on registry operations (OnRegistryNotify)
+     * @param altitude Filter altitude determining the callback ordering
+     * @param driver   Driver object owning the registration
+     * @param context  Optional context passed back to the callback
+     * @param reserved Reserved, must be nullptr
+     * @return Status of CmRegisterCallbackEx
+     */
+    NTSTATUS RegisterCallback(
+        _In_       PEX_CALLBACK_FUNCTION function,
+        _In_       PCUNICODE_STRING      altitude,
+        _In_       PVOID                 driver,
+        _In_opt_   PVOID                 context,
+        _Reserved_ PVOID                 reserved
+    );
+
+    /**
+     * @brief Returns the cookie identifying the registry callback registration
+     *        (required by CmCallbackGetKeyObjectIDEx).
+     */
+    LARGE_INTEGER GetCookie() CONST;
+
+    /**
+     * @brief Unregisters the registry callback registered by RegisterCallback().
+     */
+    VOID UnRegisterCallback();
+
 private:
     // Event items: Process, Thread, Image & RemoteThread
     LIST_ENTRY _ItemsHead;
@@ -89,4 +119,6 @@ private:
     ULONG             _NewProcessesCount;
     ULONG             _NewProcessesMaxCount;
     ExecutiveResource _NewProcessesLock;
+    // Registry callback registration cookie (CmRegisterCallbackEx)
+    LARGE_INTEGER     _Cookie;
 };

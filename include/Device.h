@@ -54,6 +54,22 @@ VOID OnImageNotify(
     _In_ PIMAGE_INFO         ImageInfo
 );
 
+/**
+ * @brief Registry callback registered through CmRegisterCallbackEx.
+ *        Handles RegNtPostSetValueKey: queues a RegistrySetValueInfo event
+ *        for every successful value write under HKLM.
+ *
+ * @param context Registration context (unused)
+ * @param arg1    REG_NOTIFY_CLASS of the operation
+ * @param arg2    Class-specific data (REG_POST_OPERATION_INFORMATION here)
+ * @return Always STATUS_SUCCESS (the operation is never blocked)
+ */
+NTSTATUS OnRegistryNotify(
+    _In_ PVOID context,
+    _In_ PVOID arg1,
+    _In_ PVOID arg2
+);
+
 #ifdef USE_KMDF
 
 EVT_WDF_DRIVER_DEVICE_ADD EvtDriverDeviceAdd;

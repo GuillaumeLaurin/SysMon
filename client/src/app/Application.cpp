@@ -39,6 +39,7 @@
 #include "gui/pages/Processes.hpp"
 #include "gui/pages/Threads.hpp"
 #include "gui/pages/Images.hpp"
+#include "gui/pages/Registry.hpp"
 #include "gui/pages/Settings.hpp"
 
 #include "gui/components/Sidebar.hpp"
@@ -178,6 +179,10 @@ void Application::Init()
         _Container.Resolve<EventRepository>(),
         _Container.Resolve<ConfigRepository>()
     ));
+    _Container.Register(std::make_shared<Registry>(
+        _Container.Resolve<EventRepository>(),
+        _Container.Resolve<ConfigRepository>()
+    ));
     _Container.Register(std::make_shared<Settings>(
         _Container.Resolve<ConfigRepository>(),
         _Container.Resolve<EventRepository>()
@@ -218,6 +223,7 @@ void Application::Init()
     registerPage(Processes::ClassName(), _Container.Resolve<Processes>());
     registerPage(Threads::ClassName(),   _Container.Resolve<Threads>());
     registerPage(Images::ClassName(),    _Container.Resolve<Images>());
+    registerPage(Registry::ClassName(),  _Container.Resolve<Registry>());
     registerPage(Settings::ClassName(),  _Container.Resolve<Settings>());
 
     _Container.Resolve<UIRenderer>()->SetSidebar(sidebar);
